@@ -1,0 +1,7 @@
+fastapi[standard]
+pydantic-settings
+setuptools 
+wheel
+asyncmy 
+databases
+scikit-learn

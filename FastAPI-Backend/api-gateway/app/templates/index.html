@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>API Gateway - SCA</title>
+    <style>
+      table {
+        border-collapse: collapse;
+        width: 80%;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px;
+        border-bottom: 1px solid #ddd;
+      }
+      th {
+        background-color: rgb(3, 3, 62);
+        color: white;
+      }
+      tr:nth-child(even) {
+        background-color: #f2f2f2;
+        align-items: center;
+        justify-content: center;
+      }
+      h1 {
+        font-family: Arial, sans-serif;
+        color: #555;
+        text-align: center;
+        margin-top: 20px;
+        margin-bottom: 30px;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f7f7f7;
+      }
+      a {
+        color: #4caf50;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      .container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+      }
+      .service-status {
+        font-weight: bold;
+        color: green;
+      }
+      .service-status.down {
+        font-weight: bold;
+        color: red;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Style Classification API Gateway</h1>
+    <div class="container">
+      <table>
+        <tr>
+          <th>Service</th>
+          <th>Status</th>
+          <th>Description</th>
+        </tr>
+        {% for service in service_status %}
+        <tr>
+          <td>{{ service.service_name }}</td>
+
+          <td>
+            <div
+              class="service-status {{ 'down' if service.service_status == 'DOWN' else '' }}"
+            >
+              {{ service.service_status }}
+            </div>
+          </td>
+          <td>{{ service.description }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </body>
+</html>

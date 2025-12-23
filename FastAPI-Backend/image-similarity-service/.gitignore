@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+fp_test/
+images/
+
+
+.env
+.env.dev
+
+s3-style_classsification_accessKeys.csv
+
+docker-compose.dev.yml
+Dockerfile.dev
+.hintrc
