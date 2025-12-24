@@ -1,14 +1,15 @@
 import uvicorn
 from app import create_app
 from config import settings
-from app.database.db_connect import init_db
+from app.database import pg_connect
 
 app = create_app()
 
 
 @app.on_event("startup")
-async def connect_db():
-    await init_db()
+async def startup_db():
+    """Initialize PostgreSQL table on startup"""
+    pg_connect.init_table()
 
 
 if __name__ == "__main__":

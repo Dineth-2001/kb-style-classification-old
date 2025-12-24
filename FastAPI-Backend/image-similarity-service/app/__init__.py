@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.status import status_router
 from app.routes.image import image_router
-from app.routes.search import search_router
+from app.routes.search import router as search_router
 from config import settings
 import boto3
 
