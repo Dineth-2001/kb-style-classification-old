@@ -127,11 +127,6 @@ async def update_image(
 
     return {"message": "Image updated successfully", "id": tenant_id}
 
-
-# =====================================================
-# NEW ENDPOINTS
-# =====================================================
-
 class SimilarImageResult(BaseModel):
     """Response model for similar images."""
     tenant_id: str
@@ -217,13 +212,13 @@ async def search_and_store(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error reading uploaded file: {e}")
 
-    # Step 1: Compute CLIP embedding for the uploaded image
+    # Compute CLIP embedding for the uploaded image
     try:
         feature_vector = get_feature_vector_pretrained(image_bytes, i_type=None)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error extracting features: {e}")
 
-    # Step 2: Search for similar images across ALL tenants
+    # Search for similar images across ALL tenants
     try:
         pg_connect.init_table()
         similar_results = pg_connect.search_similar_vectors(
@@ -233,7 +228,7 @@ async def search_and_store(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error searching for similar images: {e}")
 
-    # Step 3: Fetch base64 images for similar results
+    # Fetch base64 images for similar results
     similar_images = []
     for result in similar_results:
         image_base64 = None
@@ -252,7 +247,7 @@ async def search_and_store(
             image_base64=image_base64
         ))
 
-    # Step 4: Upload the submitted image to S3
+    # Upload the submitted image to S3
     file_extension = image.filename.split('.')[-1] if '.' in image.filename else 'png'
     file_name = f"{tenant_id}/{uuid.uuid4()}.{file_extension}"
     
@@ -261,7 +256,7 @@ async def search_and_store(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error uploading image to S3: {e}")
 
-    # Step 5: Store the embedding in PostgreSQL
+    # Store the embedding in PostgreSQL
     try:
         pg_connect.upsert_vector(tenant_id, style_type.lower(), image_url, feature_vector)
     except Exception as e:

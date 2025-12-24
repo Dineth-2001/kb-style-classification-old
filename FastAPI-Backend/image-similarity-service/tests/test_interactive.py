@@ -33,16 +33,18 @@ def print_menu():
     print("  Image Similarity Service - Interactive Test Menu")
     print("="*60)
     print("""
-    1. Check server health
-    2. Save image (upload + create embedding)
-    3. Find similar tenants (main search)
-    4. Search by image file
-    5. Search by image URL
-    6. Create embeddings from S3
-    7. List S3 images
-    8. Get embedding stats
-    9. Delete image by tenant ID
-    0. Exit
+    1.  Check server health
+    2.  Save image (upload + create embedding)
+    3.  Find similar tenants (main search)
+    4.  Search by image file
+    5.  Search by image URL
+    6.  Create embeddings from S3
+    7.  List S3 images
+    8.  Get embedding stats
+    9.  Delete image by tenant ID
+    10. Upload image only (S3 only, no embedding)
+    11. Search and store (search + save image & embedding)
+    0.  Exit
     """)
 
 
@@ -231,6 +233,70 @@ def delete_image(server_url):
         print(f"Error: {e}")
 
 
+def upload_image_only(server_url):
+    print("\n--- Upload Image Only (S3 only, no embedding) ---")
+    image_path = input("Enter image path: ").strip()
+    tenant_id = input("Enter tenant ID: ").strip()
+    
+    if not os.path.exists(image_path):
+        print(f"Error: File not found: {image_path}")
+        return
+    
+    try:
+        with open(image_path, "rb") as f:
+            files = {"image": (os.path.basename(image_path), f, "image/jpeg")}
+            data = {"tenant_id": tenant_id}
+            
+            print("Uploading image to S3...")
+            resp = requests.post(f"{server_url}/img/upload-image", files=files, data=data, timeout=60)
+            
+            print(f"Status: {resp.status_code}")
+            print(f"Response: {json.dumps(resp.json(), indent=2)}")
+    except Exception as e:
+        print(f"Error: {e}")
+
+
+def search_and_store(server_url):
+    print("\n--- Search and Store (Search + Save Image & Embedding) ---")
+    image_path = input("Enter image path: ").strip()
+    tenant_id = input("Enter tenant ID for new image: ").strip()
+    style_type = input("Enter style type (optional): ").strip() or "default"
+    top_k = input("Number of similar results (default 10): ").strip() or "10"
+    
+    if not os.path.exists(image_path):
+        print(f"Error: File not found: {image_path}")
+        return
+    
+    try:
+        with open(image_path, "rb") as f:
+            files = {"image": (os.path.basename(image_path), f, "image/jpeg")}
+            data = {
+                "tenant_id": tenant_id,
+                "style_type": style_type,
+                "top_k": int(top_k)
+            }
+            
+            print("Searching for similar images and storing...")
+            resp = requests.post(f"{server_url}/img/search-and-store", files=files, data=data, timeout=120)
+            
+            print(f"Status: {resp.status_code}")
+            
+            if resp.status_code == 200:
+                result = resp.json()
+                print(f"\nMessage: {result.get('message')}")
+                print(f"Uploaded Tenant ID: {result.get('uploaded_tenant_id')}")
+                print(f"Image URL: {result.get('image_url')}")
+                
+                similar = result.get('similar_images', [])
+                print(f"\nFound {len(similar)} similar images:")
+                for i, img in enumerate(similar):
+                    print(f"  {i+1}. tenant_id={img['tenant_id']}, similarity={img['similarity']:.4f}")
+            else:
+                print(f"Response: {resp.text}")
+    except Exception as e:
+        print(f"Error: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Interactive test for Image Similarity Service")
     parser.add_argument("--server", default=DEFAULT_SERVER, help=f"Server URL (default: {DEFAULT_SERVER})")
@@ -261,6 +327,10 @@ def main():
             get_embedding_stats(server_url)
         elif choice == "9":
             delete_image(server_url)
+        elif choice == "10":
+            upload_image_only(server_url)
+        elif choice == "11":
+            search_and_store(server_url)
         elif choice == "0":
             print("Goodbye!")
             break
