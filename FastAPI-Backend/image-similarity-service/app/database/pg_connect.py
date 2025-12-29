@@ -106,7 +106,7 @@ def search_similar_vectors(query_vector, top_k: int = 10, style_type: Optional[s
         query_vector: 1D numpy array or list of floats (the query embedding)
         top_k: Number of top similar results to return
         style_type: Optional style type to filter by
-        exclude_tenant_id: Optional tenant ID to exclude from results (e.g., the uploading tenant)
+        exclude_tenant_id: Optional tenant ID to exclude from results 
         
     Returns:
         List of dicts with tenant_id, style_type, image_url, similarity_score, rank

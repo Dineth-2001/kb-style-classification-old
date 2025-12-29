@@ -53,8 +53,7 @@ async def find_similar_tenants(
 ):
     """
     Find similar tenant images by uploading a new image.
-    
-    This endpoint:
+
     1. Takes an uploaded image
     2. Creates an embedding for it using CLIP
     3. Compares with ALL stored embeddings using cosine similarity
@@ -247,19 +246,20 @@ async def search_by_url(
 
 @router.post('/create-embeddings-from-s3', response_model=EmbeddingCreationResponse)
 async def create_embeddings_from_s3(
-    tenant_id: str = Form(...),
+    tenant_id: Optional[str] = Form(None),
     prefix: str = Form(""),
     limit: int = Form(0)
 ):
     """
     Fetch images from S3, compute their embeddings, and store them in the vector database.
     
-    This endpoint scans S3 for images under the specified tenant_id prefix,
+    This endpoint scans S3 for images under the specified prefix,
     computes CLIP embeddings for each image, and stores them in PostgreSQL with pgvector.
     
     Args:
-        tenant_id: The tenant ID - images will be scanned from S3 path: <prefix><tenant_id>/
-        prefix: Optional S3 prefix before the tenant_id path
+        tenant_id: Optional tenant ID - if provided, only processes images for that tenant.
+                   If omitted, processes ALL images in the bucket.
+        prefix: Optional S3 prefix to filter objects
         limit: Maximum number of images to process (0 = all)
         
     Returns:
@@ -269,13 +269,14 @@ async def create_embeddings_from_s3(
         # Initialize the database table
         pg_connect.init_table()
         
-        # List images from S3 for the tenant
+        # List images from S3 (all images if tenant_id is None)
         images = list_images_from_s3(prefix=prefix, tenant_id=tenant_id)
         
         if not images:
+            message = "No images found" if not tenant_id else f"No images found for tenant {tenant_id}"
             return EmbeddingCreationResponse(
                 status="success",
-                message="No images found for the specified tenant",
+                message=message,
                 processed_count=0,
                 failed_count=0,
                 details=[]
@@ -334,6 +335,120 @@ async def create_embeddings_from_s3(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating embeddings: {str(e)}")
+
+
+# @router.post('/create-all-embeddings', response_model=EmbeddingCreationResponse)
+# async def create_all_embeddings(
+#     prefix: str = Form(""),
+#     limit: int = Form(0),
+#     skip_existing: bool = Form(True)
+# ):
+#     """
+#     Create embeddings for ALL images in the S3 bucket.
+    
+#     This endpoint scans the entire S3 bucket (or a prefix), finds all images,
+#     computes CLIP embeddings for each, and stores them in PostgreSQL.
+    
+#     Args:
+#         prefix: Optional S3 prefix to filter objects (e.g., 'images/')
+#         limit: Maximum number of images to process (0 = all)
+#         skip_existing: If True, skip images that already have embeddings in DB (default: True)
+        
+#     Returns:
+#         Status of the embedding creation process with details
+#     """
+#     try:
+#         # Initialize the database table
+#         pg_connect.init_table()
+        
+#         # List ALL images from S3
+#         images = list_images_from_s3(prefix=prefix)
+        
+#         if not images:
+#             return EmbeddingCreationResponse(
+#                 status="success",
+#                 message="No images found in S3 bucket",
+#                 processed_count=0,
+#                 failed_count=0,
+#                 details=[]
+#             )
+        
+#         # Get existing tenant_ids if skip_existing is True
+#         existing_tenant_ids = set()
+#         if skip_existing:
+#             try:
+#                 existing_vectors = pg_connect.fetch_vectors()
+#                 existing_tenant_ids = {v['tenant_id'] for v in existing_vectors}
+#             except Exception:
+#                 pass  # If fetch fails, process all
+        
+#         # Filter out existing if needed
+#         if skip_existing and existing_tenant_ids:
+#             original_count = len(images)
+#             images = [img for img in images if img['tenant_id'] not in existing_tenant_ids]
+#             skipped_count = original_count - len(images)
+#         else:
+#             skipped_count = 0
+        
+#         # Apply limit if specified
+#         if limit > 0:
+#             images = images[:limit]
+        
+#         processed_count = 0
+#         failed_count = 0
+#         details = []
+#         vectors_to_insert = []
+        
+#         for img_info in images:
+#             try:
+#                 # Download image from S3
+#                 image_data = download_from_s3(img_info['key'])
+                
+#                 # Compute CLIP embedding
+#                 embedding = compute_clip_embedding(image_data, image_size=224)
+                
+#                 # Prepare vector data for bulk insert
+#                 vectors_to_insert.append({
+#                     'tenant_id': img_info['tenant_id'],
+#                     'style_type': img_info.get('style_type', ''),
+#                     'image_url': img_info['url'],
+#                     'feature_vector': embedding
+#                 })
+                
+#                 processed_count += 1
+#                 details.append({
+#                     'key': img_info['key'],
+#                     'tenant_id': img_info['tenant_id'],
+#                     'status': 'success'
+#                 })
+                
+#             except Exception as e:
+#                 failed_count += 1
+#                 details.append({
+#                     'key': img_info['key'],
+#                     'tenant_id': img_info.get('tenant_id', 'unknown'),
+#                     'status': 'failed',
+#                     'error': str(e)
+#                 })
+        
+#         # Bulk insert all vectors
+#         if vectors_to_insert:
+#             pg_connect.bulk_upsert_vectors(vectors_to_insert)
+        
+#         message = f"Processed {processed_count} images, {failed_count} failed"
+#         if skipped_count > 0:
+#             message += f", {skipped_count} skipped (already exist)"
+        
+#         return EmbeddingCreationResponse(
+#             status="success",
+#             message=message,
+#             processed_count=processed_count,
+#             failed_count=failed_count,
+#             details=details
+#         )
+        
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error creating embeddings: {str(e)}")
 
 
 @router.get('/list-s3-images')

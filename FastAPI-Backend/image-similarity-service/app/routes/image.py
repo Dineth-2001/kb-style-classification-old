@@ -36,8 +36,8 @@ async def save(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error reading uploaded file: {e}")
 
-    # upload raw file to S3
-    file_name = f"{uuid.uuid4()}.png"
+    # upload raw file to S3 with tenant_id prefix 
+    file_name = f"{form_data.tenant_id}/{uuid.uuid4()}.png"
     try:
         image_url = upload_to_s3(image_bytes, file_name)
     except Exception as e:
@@ -75,7 +75,10 @@ async def delete(tenant_id: str = Form(...)):
         )
 
     try:
-        image_key = image_url.split("/")[-1]
+        # Extract full S3 key from URL (e.g., "tenant_id/uuid.png")
+        # URL format: https://bucket.s3.amazonaws.com/tenant_id/uuid.png
+        from app.utils.s3_handler import BUCKET_NAME
+        image_key = image_url.split(f"{BUCKET_NAME}.s3.amazonaws.com/")[-1]
         delete_from_s3(image_key)
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error deleting image from s3: " + str(e))
@@ -103,7 +106,8 @@ async def update_image(
     except Exception:
         pass
 
-    file_name = f"{uuid.uuid4()}.png"
+    # Upload new image with tenant_id prefix
+    file_name = f"{tenant_id}/{uuid.uuid4()}.png"
     try:
         image_url = upload_to_s3(image_bytes, file_name)
     except Exception as e:
@@ -120,7 +124,9 @@ async def update_image(
     # Delete old image from S3
     if old_image_url:
         try:
-            image_key = old_image_url.split("/")[-1]
+            # Extract full S3 key from URL (e.g., "tenant_id/uuid.png")
+            from app.utils.s3_handler import BUCKET_NAME
+            image_key = old_image_url.split(f"{BUCKET_NAME}.s3.amazonaws.com/")[-1]
             delete_from_s3(image_key)
         except Exception:
             pass  # Don't fail if old image deletion fails

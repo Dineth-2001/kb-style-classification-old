@@ -223,3 +223,47 @@ def get_images_by_tenant_ids(tenant_ids: List[str]) -> Dict[str, Optional[bytes]
         except Exception:
             result[tenant_id] = None
     return result
+
+
+# def list_all_images_from_s3(prefix: str = "") -> List[Dict]:
+#     """
+#     Lists ALL image files from S3 bucket (no tenant filter).
+    
+#     Args:
+#         prefix: Optional S3 prefix to filter objects
+        
+#     Returns:
+#         List of dicts containing: key, url, tenant_id, style_type, size, last_modified
+#     """
+#     try:
+#         paginator = s3_client.get_paginator('list_objects_v2')
+#         page_iterator = paginator.paginate(Bucket=BUCKET_NAME, Prefix=prefix)
+        
+#         images = []
+#         for page in page_iterator:
+#             for obj in page.get('Contents', []):
+#                 key = obj['Key']
+#                 # Check if it's an image file
+#                 _, ext = os.path.splitext(key.lower())
+#                 if ext not in IMG_EXTS:
+#                     continue
+                
+#                 # Parse tenant_id and style_type from key
+#                 parsed_tenant_id, style_type = parse_s3_key(key)
+                
+#                 image_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{key}"
+#                 images.append({
+#                     'key': key,
+#                     'url': image_url,
+#                     'tenant_id': parsed_tenant_id,
+#                     'style_type': style_type,
+#                     'size': obj['Size'],
+#                     'last_modified': obj['LastModified'].isoformat()
+#                 })
+        
+#         return images
+        
+#     except NoCredentialsError:
+#         raise Exception("AWS credentials not available")
+#     except ClientError as e:
+#         raise Exception(f"Error listing S3 objects: {e}")
