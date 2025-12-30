@@ -75,7 +75,7 @@ async def delete(tenant_id: str = Form(...)):
         )
 
     try:
-        # Extract full S3 key from URL (e.g., "tenant_id/uuid.png")
+        # Extract full S3 key from URL 
         # URL format: https://bucket.s3.amazonaws.com/tenant_id/uuid.png
         from app.utils.s3_handler import BUCKET_NAME
         image_key = image_url.split(f"{BUCKET_NAME}.s3.amazonaws.com/")[-1]
@@ -124,12 +124,12 @@ async def update_image(
     # Delete old image from S3
     if old_image_url:
         try:
-            # Extract full S3 key from URL (e.g., "tenant_id/uuid.png")
+            # Extract full S3 key from URL
             from app.utils.s3_handler import BUCKET_NAME
             image_key = old_image_url.split(f"{BUCKET_NAME}.s3.amazonaws.com/")[-1]
             delete_from_s3(image_key)
         except Exception:
-            pass  # Don't fail if old image deletion fails
+            pass  
 
     return {"message": "Image updated successfully", "id": tenant_id}
 
