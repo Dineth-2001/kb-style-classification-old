@@ -16,7 +16,7 @@ from app.database import pg_connect
 
 class SearchResponse(BaseModel):
     tenant_id: str
-    style_type: Optional[str] = None
+    style_number: Optional[str] = None
     image_url: str
     similarity_score: float
     rank: int
@@ -25,7 +25,7 @@ class SearchResponse(BaseModel):
 class SimilarImageResponse(BaseModel):
     """Response model for similar images with full image data"""
     tenant_id: str
-    style_type: Optional[str] = None
+    style_number: Optional[str] = None
     image_url: str
     similarity_score: float
     rank: int
@@ -48,7 +48,7 @@ search_router = router  # Alias for backward compatibility
 async def find_similar_tenants(
     image: UploadFile = File(...),
     top_k: int = Form(10),
-    style_type: Optional[str] = Form(None),
+    style_number: Optional[str] = Form(None),
     include_image_data: bool = Form(False)
 ):
     """
@@ -68,7 +68,8 @@ async def find_similar_tenants(
         include_image_data: If True, includes base64 encoded image data in response
         
     Returns:
-        List of similar tenant images with similarity scores, ranked by similarity
+        List of similar tenant images with similarity scores, ranked by similarity.
+        Includes the actual image bytes (base64 encoded)
     """
     start_time = time.time()
     
@@ -83,7 +84,7 @@ async def find_similar_tenants(
         results = pg_connect.search_similar_vectors(
             query_vector=query_vec,
             top_k=top_k,
-            style_type=style_type,
+            style_number=style_number,
             exclude_tenant_id=None  # Don't exclude any tenant
         )
         
@@ -114,7 +115,7 @@ async def find_similar_tenants(
             
             response.append(SimilarImageResponse(
                 tenant_id=tenant_id,
-                style_type=r.get('style_type'),
+                style_number=r.get('style_number'),
                 image_url=image_url,
                 similarity_score=r['similarity_score'],
                 rank=r['rank'],
@@ -131,7 +132,7 @@ async def find_similar_tenants(
 async def search_image(
     image: UploadFile = File(...),
     top_k: int = Form(10),
-    style_type: Optional[str] = Form(None)
+    style_number: Optional[str] = Form(None)
 ):
     """
     Search for similar images using the provided image file.
@@ -158,7 +159,7 @@ async def search_image(
         results = pg_connect.search_similar_vectors(
             query_vector=query_vec,
             top_k=top_k,
-            style_type=style_type
+            style_number=style_number
         )
         
         if not results:
@@ -166,15 +167,15 @@ async def search_image(
         
         # Convert to response model
         response = [
-            SearchResponse(
-                tenant_id=r['tenant_id'],
-                style_type=r.get('style_type'),
-                image_url=r['image_url'],
-                similarity_score=r['similarity_score'],
-                rank=r['rank']
-            )
-            for r in results
-        ]
+                SearchResponse(
+                    tenant_id=r['tenant_id'],
+                    style_number=r.get('style_number'),
+                    image_url=r['image_url'],
+                    similarity_score=r['similarity_score'],
+                    rank=r['rank']
+                )
+                for r in results
+            ]
         
         return response
 
@@ -182,66 +183,66 @@ async def search_image(
         raise HTTPException(status_code=500, detail=f"Error searching images: {str(e)}")
 
 
-@router.post('/search-by-url', response_model=List[SearchResponse])
-async def search_by_url(
-    image_url: str = Form(...),
-    top_k: int = Form(10),
-    style_type: Optional[str] = Form(None)
-):
-    """
-    Search for similar images using an image URL (S3 or external).
+# @router.post('/search-by-url', response_model=List[SearchResponse])
+# async def search_by_url(
+#     image_url: str = Form(...),
+#     top_k: int = Form(10),
+#     style_number: Optional[str] = Form(None)
+# ):
+#     """
+#     Search for similar images using an image URL (S3 or external).
     
-    Downloads the image from the URL, computes its embedding, and searches for similar images
-    across ALL tenants.
+#     Downloads the image from the URL, computes its embedding, and searches for similar images
+#     across ALL tenants.
     
-    Args:
-        image_url: URL of the image to search with
-        top_k: Number of top similar results to return (default: 10)
-        style_type: Optional style type to filter results
+#     Args:
+#         image_url: URL of the image to search with
+#         top_k: Number of top similar results to return (default: 10)
+#         style_type: Optional style type to filter results
         
-    Returns:
-        List of similar images with similarity scores, ranked by similarity
-    """
-    try:
-        # Download image from URL
-        try:
-            image_data = download_from_s3_url(image_url)
-        except Exception:
-            # If not an S3 URL, try downloading as external URL
-            import requests
-            response = requests.get(image_url, timeout=30)
-            response.raise_for_status()
-            image_data = response.content
+#     Returns:
+#         List of similar images with similarity scores, ranked by similarity
+#     """
+#     try:
+#         # Download image from URL
+#         try:
+#             image_data = download_from_s3_url(image_url)
+#         except Exception:
+#             # If not an S3 URL, try downloading as external URL
+#             import requests
+#             response = requests.get(image_url, timeout=30)
+#             response.raise_for_status()
+#             image_data = response.content
         
-        # Compute embedding for the image
-        query_vec = compute_clip_embedding(image_data)
+#         # Compute embedding for the image
+#         query_vec = compute_clip_embedding(image_data)
         
-        # Search for similar vectors across ALL tenants
-        results = pg_connect.search_similar_vectors(
-            query_vector=query_vec,
-            top_k=top_k,
-            style_type=style_type
-        )
+#         # Search for similar vectors across ALL tenants
+#         results = pg_connect.search_similar_vectors(
+#             query_vector=query_vec,
+#             top_k=top_k,
+#             style_number=style_number
+#         )
         
-        if not results:
-            return []
+#         if not results:
+#             return []
         
-        # Convert to response model
-        response = [
-            SearchResponse(
-                tenant_id=r['tenant_id'],
-                style_type=r.get('style_type'),
-                image_url=r['image_url'],
-                similarity_score=r['similarity_score'],
-                rank=r['rank']
-            )
-            for r in results
-        ]
+#         # Convert to response model
+#         response = [
+#             SearchResponse(
+#                 tenant_id=r['tenant_id'],
+#                 style_type=r.get('style_type'),
+#                 image_url=r['image_url'],
+#                 similarity_score=r['similarity_score'],
+#                 rank=r['rank']
+#             )
+#             for r in results
+#         ]
         
-        return response
+#         return response
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error searching images: {str(e)}")
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error searching images: {str(e)}")
 
 
 @router.post('/create-embeddings-from-s3', response_model=EmbeddingCreationResponse)

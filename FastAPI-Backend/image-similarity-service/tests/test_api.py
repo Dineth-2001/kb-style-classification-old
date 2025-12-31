@@ -130,7 +130,7 @@ def test_save_image(server_url, image_path, tenant_id, style_type="test"):
             files = {"image": ("test_image.jpg", f, "image/jpeg")}
             data = {
                 "tenant_id": tenant_id,
-                "style_type": style_type
+                "style_number": style_type
             }
             
             print_info(f"Saving image for tenant_id: {tenant_id}")
@@ -403,7 +403,7 @@ def test_search_and_store(server_url, image_path, tenant_id, style_type="modern"
             files = {"image": ("search_store_test.jpg", f, "image/jpeg")}
             data = {
                 "tenant_id": tenant_id,
-                "style_type": style_type,
+                "style_number": style_type,
                 "top_k": top_k
             }
             

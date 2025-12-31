@@ -27,7 +27,7 @@ def init_table():
     CREATE TABLE IF NOT EXISTS fvector_pg (
         id SERIAL PRIMARY KEY,
         tenant_id TEXT NOT NULL,
-        style_type TEXT,
+        style_number TEXT,
         image_url TEXT,
         feature_vector vector,
         date_created TIMESTAMP DEFAULT now(),
@@ -43,16 +43,16 @@ def init_table():
         conn.close()
 
 
-def upsert_vector(tenant_id, style_type, image_url, vector):
+def upsert_vector(tenant_id, style_number, image_url, vector):
     """Upsert vector into Postgres. `vector` is a 1D numpy array or list of floats."""
     vec_list = list(map(float, vector))
     vec_text = '[' + ','.join(f"{v:.6f}" for v in vec_list) + ']'
 
     sql = """
-    INSERT INTO fvector_pg (tenant_id, style_type, image_url, feature_vector, date_created)
+    INSERT INTO fvector_pg (tenant_id, style_number, image_url, feature_vector, date_created)
     VALUES (%s, %s, %s, %s::vector, now())
     ON CONFLICT (tenant_id) DO UPDATE SET
-        style_type = EXCLUDED.style_type,
+        style_number = EXCLUDED.style_number,
         image_url = EXCLUDED.image_url,
         feature_vector = EXCLUDED.feature_vector,
         date_created = now();
@@ -61,12 +61,12 @@ def upsert_vector(tenant_id, style_type, image_url, vector):
     try:
         with conn:
             with conn.cursor() as cur:
-                cur.execute(sql, (tenant_id, style_type, image_url, vec_text))
+                cur.execute(sql, (tenant_id, style_number, image_url, vec_text))
     finally:
         conn.close()
 
 
-def fetch_vectors(tenant_id: Optional[str] = None, style_type: Optional[str] = None) -> List[Dict]:
+def fetch_vectors(tenant_id: Optional[str] = None, style_number: Optional[str] = None) -> List[Dict]:
     """Return list of rows with columns: tenant_id, style_type, image_url, vec_text (string).
     
     Args:
@@ -79,12 +79,12 @@ def fetch_vectors(tenant_id: Optional[str] = None, style_type: Optional[str] = N
     if tenant_id:
         conditions.append("tenant_id = %s")
         params.append(tenant_id)
-    if style_type:
-        conditions.append("style_type = %s")
-        params.append(style_type)
+    if style_number:
+        conditions.append("style_number = %s")
+        params.append(style_number)
     
     where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
-    sql = f"SELECT tenant_id, style_type, image_url, feature_vector::text as vec_text FROM fvector_pg{where_clause}"
+    sql = f"SELECT tenant_id, style_number, image_url, feature_vector::text as vec_text FROM fvector_pg{where_clause}"
 
     conn = get_conn()
     try:
@@ -97,7 +97,7 @@ def fetch_vectors(tenant_id: Optional[str] = None, style_type: Optional[str] = N
     return rows
 
 
-def search_similar_vectors(query_vector, top_k: int = 10, style_type: Optional[str] = None, exclude_tenant_id: Optional[str] = None) -> List[Dict]:
+def search_similar_vectors(query_vector, top_k: int = 10, style_number: Optional[str] = None, exclude_tenant_id: Optional[str] = None) -> List[Dict]:
     """
     Search for similar vectors using cosine similarity in PostgreSQL with pgvector.
     Searches ACROSS ALL tenants to find the most similar images.
@@ -123,16 +123,16 @@ def search_similar_vectors(query_vector, top_k: int = 10, style_type: Optional[s
         conditions.append("tenant_id != %s")
         params.append(exclude_tenant_id)
     
-    if style_type:
-        conditions.append("style_type = %s")
-        params.append(style_type)
+    if style_number:
+        conditions.append("style_number = %s")
+        params.append(style_number)
     
     where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
     
     sql = f"""
     SELECT 
         tenant_id,
-        style_type,
+        style_number,
         image_url,
         1 - (feature_vector <=> %s::vector) as similarity_score
     FROM fvector_pg
@@ -155,7 +155,7 @@ def search_similar_vectors(query_vector, top_k: int = 10, style_type: Optional[s
     for rank, row in enumerate(rows, start=1):
         results.append({
             'tenant_id': row['tenant_id'],
-            'style_type': row['style_type'],
+            'style_number': row.get('style_number'),
             'image_url': row['image_url'],
             'similarity_score': float(row['similarity_score']),
             'rank': rank
@@ -242,7 +242,7 @@ def bulk_upsert_vectors(vectors_data: List[Dict]):
                     vec_text = '[' + ','.join(f"{v:.6f}" for v in vec_list) + ']'
                     cur.execute(sql, (
                         data['tenant_id'],
-                        data.get('style_type', ''),
+                        data.get('style_number', ''),
                         data['image_url'],
                         vec_text
                     ))

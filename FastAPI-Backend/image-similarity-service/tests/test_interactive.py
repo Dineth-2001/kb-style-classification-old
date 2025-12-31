@@ -62,7 +62,7 @@ def save_image(server_url):
     print("\n--- Save Image ---")
     image_path = input("Enter image path: ").strip()
     tenant_id = input("Enter tenant ID: ").strip()
-    style_type = input("Enter style type (optional): ").strip() or "default"
+    style_number = input("Enter style number (optional): ").strip() or "default"
     
     if not os.path.exists(image_path):
         print(f"Error: File not found: {image_path}")
@@ -71,7 +71,7 @@ def save_image(server_url):
     try:
         with open(image_path, "rb") as f:
             files = {"image": (os.path.basename(image_path), f, "image/jpeg")}
-            data = {"tenant_id": tenant_id, "style_type": style_type}
+            data = {"tenant_id": tenant_id, "style_number": style_number}
             
             print("Uploading and creating embedding...")
             resp = requests.post(f"{server_url}/img/save-image", files=files, data=data, timeout=60)
@@ -260,7 +260,7 @@ def search_and_store(server_url):
     print("\n--- Search and Store (Search + Save Image & Embedding) ---")
     image_path = input("Enter image path: ").strip()
     tenant_id = input("Enter tenant ID for new image: ").strip()
-    style_type = input("Enter style type (optional): ").strip() or "default"
+    style_number = input("Enter style number (optional): ").strip() or "default"
     top_k = input("Number of similar results (default 10): ").strip() or "10"
     
     if not os.path.exists(image_path):
@@ -272,7 +272,7 @@ def search_and_store(server_url):
             files = {"image": (os.path.basename(image_path), f, "image/jpeg")}
             data = {
                 "tenant_id": tenant_id,
-                "style_type": style_type,
+                "style_number": style_number,
                 "top_k": int(top_k)
             }
             

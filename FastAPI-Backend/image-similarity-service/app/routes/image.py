@@ -15,21 +15,21 @@ image_router = APIRouter()
 
 
 class ImageSaveForm(BaseModel):
-    style_type: str
+    style_number: str
     tenant_id: str
 
 
 @image_router.post("/save-image")
 async def save(
     image: UploadFile = File(...),
-    style_type: str = Form(...),
+    style_number: str = Form(...),
     tenant_id: str = Form(...),
 ):
     """Save uploaded image to S3, compute CLIP embedding, and store in DB.
 
     Uses CLIP with image_size=224 and stores `feature_vector` as bytes.
     """
-    form_data = ImageSaveForm(style_type=style_type.lower(), tenant_id=tenant_id)
+    form_data = ImageSaveForm(style_number=style_number, tenant_id=tenant_id)
 
     try:
         image_bytes = await image.read()
@@ -48,7 +48,7 @@ async def save(
         feature_vector = get_feature_vector_pretrained(image_bytes, i_type=None)
         # upsert to Postgres vector table
         pg_connect.init_table()
-        pg_connect.upsert_vector(form_data.tenant_id, form_data.style_type, image_url, feature_vector)
+        pg_connect.upsert_vector(form_data.tenant_id, form_data.style_number, image_url, feature_vector)
     except Exception as e:
         # try to delete uploaded S3 object on failure
         try:
@@ -89,7 +89,7 @@ async def delete(tenant_id: str = Form(...)):
 @image_router.put("/update-image")
 async def update_image(
     image: UploadFile = File(...),
-    style_type: str = Form(...),
+    style_number: str = Form(...),
     tenant_id: str = Form(...),
 ):
     try:
@@ -117,7 +117,7 @@ async def update_image(
         feature_vector = get_feature_vector_pretrained(image_bytes, i_type=None)
         # upsert to Postgres
         pg_connect.init_table()
-        pg_connect.upsert_vector(tenant_id, style_type.lower(), image_url, feature_vector)
+        pg_connect.upsert_vector(tenant_id, style_number, image_url, feature_vector)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -136,7 +136,7 @@ async def update_image(
 class SimilarImageResult(BaseModel):
     """Response model for similar images."""
     tenant_id: str
-    style_type: str
+    style_number: str
     image_url: str
     similarity: float
     image_base64: Optional[str] = None
@@ -190,7 +190,7 @@ async def upload_image_only(
 @image_router.post("/search-and-store", response_model=SearchAndStoreResponse)
 async def search_and_store(
     image: UploadFile = File(...),
-    style_type: str = Form(...),
+    style_number: str = Form(...),
     tenant_id: str = Form(...),
     top_k: int = Form(10),
 ):
@@ -247,7 +247,7 @@ async def search_and_store(
 
         similar_images.append(SimilarImageResult(
             tenant_id=result['tenant_id'],
-            style_type=result.get('style_type', ''),
+            style_number=result.get('style_number', ''),
             image_url=result.get('image_url', ''),
             similarity=result.get('similarity', 0.0),
             image_base64=image_base64
@@ -264,7 +264,7 @@ async def search_and_store(
 
     # Store the embedding in PostgreSQL
     try:
-        pg_connect.upsert_vector(tenant_id, style_type.lower(), image_url, feature_vector)
+        pg_connect.upsert_vector(tenant_id, style_number, image_url, feature_vector)
     except Exception as e:
         # Try to clean up S3 on failure
         try:
