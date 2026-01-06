@@ -30,9 +30,9 @@ def init_table():
         style_number TEXT,
         image_url TEXT,
         feature_vector vector,
-        date_created TIMESTAMP DEFAULT now(),
-        UNIQUE (tenant_id)
+        date_created TIMESTAMP DEFAULT now()
     );
+    CREATE INDEX IF NOT EXISTS idx_fvector_tenant_id ON fvector_pg(tenant_id);
     """
     conn = get_conn()
     try:
@@ -44,24 +44,24 @@ def init_table():
 
 
 def upsert_vector(tenant_id, style_number, image_url, vector):
-    """Upsert vector into Postgres. `vector` is a 1D numpy array or list of floats."""
+    """Insert vector into Postgres. `vector` is a 1D numpy array or list of floats.
+    Returns the id of the inserted row.
+    """
     vec_list = list(map(float, vector))
     vec_text = '[' + ','.join(f"{v:.6f}" for v in vec_list) + ']'
 
     sql = """
     INSERT INTO fvector_pg (tenant_id, style_number, image_url, feature_vector, date_created)
     VALUES (%s, %s, %s, %s::vector, now())
-    ON CONFLICT (tenant_id) DO UPDATE SET
-        style_number = EXCLUDED.style_number,
-        image_url = EXCLUDED.image_url,
-        feature_vector = EXCLUDED.feature_vector,
-        date_created = now();
+    RETURNING id;
     """
     conn = get_conn()
     try:
         with conn:
             with conn.cursor() as cur:
                 cur.execute(sql, (tenant_id, style_number, image_url, vec_text))
+                result = cur.fetchone()
+                return result[0] if result else None
     finally:
         conn.close()
 
@@ -84,7 +84,7 @@ def fetch_vectors(tenant_id: Optional[str] = None, style_number: Optional[str] =
         params.append(style_number)
     
     where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
-    sql = f"SELECT tenant_id, style_number, image_url, feature_vector::text as vec_text FROM fvector_pg{where_clause}"
+    sql = f"SELECT id, tenant_id, style_number, image_url, feature_vector::text as vec_text FROM fvector_pg{where_clause}"
 
     conn = get_conn()
     try:
@@ -131,6 +131,7 @@ def search_similar_vectors(query_vector, top_k: int = 10, style_number: Optional
     
     sql = f"""
     SELECT 
+        id,
         tenant_id,
         style_number,
         image_url,
@@ -154,6 +155,7 @@ def search_similar_vectors(query_vector, top_k: int = 10, style_number: Optional
     results = []
     for rank, row in enumerate(rows, start=1):
         results.append({
+            'id': row['id'],
             'tenant_id': row['tenant_id'],
             'style_number': row.get('style_number'),
             'image_url': row['image_url'],
@@ -164,26 +166,55 @@ def search_similar_vectors(query_vector, top_k: int = 10, style_number: Optional
     return results
 
 
-def delete_vector(tenant_id: str) -> Optional[str]:
-    """Delete a vector row by tenant_id.
+def delete_vector(image_id: int) -> Optional[str]:
+    """Delete a vector row by id.
     Returns the deleted row's image_url or None if not found.
     """
-    sql_select = "SELECT image_url FROM fvector_pg WHERE tenant_id = %s LIMIT 1"
-    sql_delete = "DELETE FROM fvector_pg WHERE tenant_id = %s"
+    sql_select = "SELECT image_url FROM fvector_pg WHERE id = %s"
+    sql_delete = "DELETE FROM fvector_pg WHERE id = %s"
 
     conn = get_conn()
     try:
         with conn:
             with conn.cursor() as cur:
-                cur.execute(sql_select, (tenant_id,))
+                cur.execute(sql_select, (image_id,))
                 row = cur.fetchone()
                 if not row:
                     return None
                 image_url = row[0]
-                cur.execute(sql_delete, (tenant_id,))
+                cur.execute(sql_delete, (image_id,))
     finally:
         conn.close()
     return image_url
+
+
+def update_vector(image_id: int, tenant_id: str, style_number: str, image_url: str, vector):
+    """Update an existing vector by id.
+    Returns True if successful, False if image_id not found.
+    """
+    vec_list = list(map(float, vector))
+    vec_text = '[' + ','.join(f"{v:.6f}" for v in vec_list) + ']'
+    
+    sql = """
+    UPDATE fvector_pg 
+    SET tenant_id = %s, 
+        style_number = %s, 
+        image_url = %s, 
+        feature_vector = %s::vector, 
+        date_created = now()
+    WHERE id = %s
+    RETURNING image_url;
+    """
+    
+    conn = get_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (tenant_id, style_number, image_url, vec_text, image_id))
+                result = cur.fetchone()
+                return result is not None
+    finally:
+        conn.close()
 
 
 def get_vector_count(tenant_id: Optional[str] = None) -> int:
@@ -215,25 +246,25 @@ def get_vector_count(tenant_id: Optional[str] = None) -> int:
 
 def bulk_upsert_vectors(vectors_data: List[Dict]):
     """
-    Bulk upsert multiple vectors into the database.
+    Bulk insert multiple vectors into the database.
     
     Args:
-        vectors_data: List of dicts with keys: tenant_id, style_type, image_url, feature_vector
+        vectors_data: List of dicts with keys: tenant_id, style_number, image_url, feature_vector
+    
+    Returns:
+        List of inserted IDs
     """
     if not vectors_data:
-        return
+        return []
     
     sql = """
-    INSERT INTO fvector_pg (tenant_id, style_type, image_url, feature_vector, date_created)
+    INSERT INTO fvector_pg (tenant_id, style_number, image_url, feature_vector, date_created)
     VALUES (%s, %s, %s, %s::vector, now())
-    ON CONFLICT (tenant_id) DO UPDATE SET
-        style_type = EXCLUDED.style_type,
-        image_url = EXCLUDED.image_url,
-        feature_vector = EXCLUDED.feature_vector,
-        date_created = now();
+    RETURNING id;
     """
     
     conn = get_conn()
+    inserted_ids = []
     try:
         with conn:
             with conn.cursor() as cur:
@@ -246,5 +277,10 @@ def bulk_upsert_vectors(vectors_data: List[Dict]):
                         data['image_url'],
                         vec_text
                     ))
+                    result = cur.fetchone()
+                    if result:
+                        inserted_ids.append(result[0])
     finally:
         conn.close()
+    
+    return inserted_ids

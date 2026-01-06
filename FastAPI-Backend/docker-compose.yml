@@ -1,6 +1,28 @@
 version: '3.8'
 
 services:
+  mariadb:
+    image: mariadb:11.2
+    container_name: kb-mariadb
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: kb_test_db
+      MYSQL_USER: kb_user
+      MYSQL_PASSWORD: kb_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./init-db:/docker-entrypoint-initdb.d
+    networks:
+      - ob-similarity-service-network
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   image-similarity-service:
     build:
       context: ./image-similarity-service
@@ -29,6 +51,9 @@ services:
     networks:
       - image-similarity-service-network
       - ob-similarity-service-network
+    depends_on:
+      mariadb:
+        condition: service_healthy
 
   ob-similarity-service:
     build:
@@ -44,9 +69,15 @@ services:
       - ./ob-similarity-service/.env
     networks:
       - ob-similarity-service-network
+    depends_on:
+      mariadb:
+        condition: service_healthy
 
 networks:
   image-similarity-service-network:
   ob-similarity-service-network:
+
+volumes:
+  mariadb_data:
 
 

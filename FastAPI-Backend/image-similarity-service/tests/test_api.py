@@ -148,8 +148,10 @@ def test_save_image(server_url, image_path, tenant_id, style_type="test"):
             if resp.status_code == 200:
                 result = resp.json()
                 print_success(f"Image saved successfully in {elapsed:.2f}s")
+                print(f"   Image ID: {result.get('image_id')}")
+                print(f"   Tenant ID: {result.get('tenant_id')}")
                 print(f"   Response: {json.dumps(result, indent=2)}")
-                return True
+                return result.get('image_id')  # Return image_id for use in other tests
             else:
                 print_error(f"Failed to save image: {resp.status_code}")
                 print(f"   Response: {resp.text}")
@@ -230,7 +232,7 @@ def test_find_similar_tenants(server_url, image_path, top_k=10, include_image_da
                 if results:
                     print("\n   Top results:")
                     for r in results[:5]:  # Show top 5
-                        print(f"   #{r['rank']}: tenant_id={r['tenant_id']}, "
+                        print(f"   #{r['rank']}: image_id={r.get('image_id')}, tenant_id={r['tenant_id']}, "
                               f"similarity={r['similarity_score']:.4f}, "
                               f"url={r['image_url'][:50]}...")
                 else:
@@ -275,7 +277,7 @@ def test_search_image(server_url, image_path, top_k=10):
                 if results:
                     print("\n   Results:")
                     for r in results[:5]:
-                        print(f"   #{r['rank']}: tenant_id={r['tenant_id']}, "
+                        print(f"   #{r['rank']}: image_id={r.get('image_id')}, tenant_id={r['tenant_id']}, "
                               f"similarity={r['similarity_score']:.4f}")
                         
                 return True
@@ -423,6 +425,7 @@ def test_search_and_store(server_url, image_path, tenant_id, style_type="modern"
                 result = resp.json()
                 print_success(f"Search and store completed in {elapsed:.2f}s")
                 print(f"   Message: {result.get('message')}")
+                print(f"   Image ID: {result.get('image_id')}")
                 print(f"   Uploaded Tenant ID: {result.get('uploaded_tenant_id')}")
                 print(f"   Image URL: {result.get('image_url')}")
                 
@@ -432,9 +435,9 @@ def test_search_and_store(server_url, image_path, tenant_id, style_type="modern"
                 if similar:
                     print("\n   Top similar images:")
                     for i, img in enumerate(similar[:3]):
-                        print(f"      {i+1}. tenant_id={img['tenant_id']}, "
+                        print(f"      {i+1}. image_id={img.get('image_id')}, tenant_id={img['tenant_id']}, "
                               f"similarity={img['similarity']:.4f}, "
-                              f"style={img.get('style_type', 'N/A')}")
+                              f"style={img.get('style_number', 'N/A')}")
                 return True
             else:
                 print_error(f"Failed to search and store: {resp.status_code}")

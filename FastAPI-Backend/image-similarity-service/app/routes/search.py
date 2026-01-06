@@ -15,6 +15,7 @@ from app.database import pg_connect
 
 
 class SearchResponse(BaseModel):
+    image_id: int
     tenant_id: str
     style_number: Optional[str] = None
     image_url: str
@@ -24,6 +25,7 @@ class SearchResponse(BaseModel):
 
 class SimilarImageResponse(BaseModel):
     """Response model for similar images with full image data"""
+    image_id: int
     tenant_id: str
     style_number: Optional[str] = None
     image_url: str
@@ -114,6 +116,7 @@ async def find_similar_tenants(
                         pass  # Continue without image data
             
             response.append(SimilarImageResponse(
+                image_id=r['id'],
                 tenant_id=tenant_id,
                 style_number=r.get('style_number'),
                 image_url=image_url,
@@ -168,6 +171,7 @@ async def search_image(
         # Convert to response model
         response = [
                 SearchResponse(
+                    image_id=r['id'],
                     tenant_id=r['tenant_id'],
                     style_number=r.get('style_number'),
                     image_url=r['image_url'],

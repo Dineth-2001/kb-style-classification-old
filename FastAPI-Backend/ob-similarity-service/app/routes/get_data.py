@@ -31,3 +31,14 @@ async def get_styles(tenant_id: int):
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# -----------------------------------------------------------------------
+
+@data_router.get("/get-ob-by-layout/{tenant_id}/{layout_code}")
+async def get_ob_by_layout(tenant_id: int, layout_code: str):
+    """Get OB data by tenant_id and layout_code (style_number)"""
+    from app.utils.get_data import get_ob_by_layout_code
+    result = await get_ob_by_layout_code(tenant_id, layout_code)
+    if not result:
+        raise HTTPException(status_code=404, detail="OB not found for given layout_code")
+    return JSONResponse(content=result)

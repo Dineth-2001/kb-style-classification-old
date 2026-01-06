@@ -3,6 +3,7 @@ __pycache__/
 __pycache__/*
 **/__pycache__/
 to_do.txt
+venv/
 
 .env
 .env.dev

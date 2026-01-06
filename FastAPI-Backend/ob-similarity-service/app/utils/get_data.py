@@ -26,7 +26,7 @@ async def get_operations(tenant_id: int, style_type: str):
 
     query_styletype_id = """
     SELECT s.styletype_id, s.style_type 
-    FROM line_balancing.styletype s 
+    FROM styletype s 
     WHERE s.tenant_id = :tenant_id 
     AND s.style_type = :style_type;
     """
@@ -42,7 +42,7 @@ async def get_operations(tenant_id: int, style_type: str):
 
     query_layout_id = """
     SELECT l.layout_id, l.layout_code
-    FROM line_balancing.layout l 
+    FROM layout l 
     WHERE l.tenant_id = :tenant_id 
     AND l.styletype_id = :styletype_id;
     """
@@ -115,7 +115,7 @@ async def get_style_types(tenant_id: int):
     try:
         query = """
         SELECT style_type 
-        FROM line_balancing.styletype 
+        FROM styletype 
         WHERE tenant_id = :tenant_id;
         """
 
@@ -284,3 +284,52 @@ def add_allocation_data_ds(
             status_code=500,
             detail="Error adding allocation data to the results by datasource",
         )
+
+# -------------------------------------------------------------------------------- #
+
+async def get_ob_by_layout_code(tenant_id: int, layout_code: str):
+    """Fetch OB data for a specific layout_code (style_number from image service)"""
+    layout_code = layout_code.strip()
+    
+    query = """
+    SELECT 
+        layout.layout_id,
+        layout.layout_code,
+        styletype.style_type,
+        layout_operation.operation_name,
+        layout_operation.operation_seq,
+        machine.machine_name
+    FROM 
+        layout layout
+    JOIN 
+        styletype styletype ON layout.styletype_id = styletype.styletype_id
+    JOIN 
+        layout_operation layout_operation ON layout.layout_id = layout_operation.layout_id
+    JOIN 
+        machine machine ON layout_operation.machine_id = machine.machine_id
+    WHERE 
+        layout.tenant_id = :tenant_id
+        AND layout.layout_code = :layout_code
+    ORDER BY 
+        layout_operation.operation_seq;
+    """
+    results = await fetch_from_db(query, {"tenant_id": tenant_id, "layout_code": layout_code})
+    if not results:
+        return None
+    
+    # Reorganize into structured format
+    data = [dict(row) for row in results]
+    ob_data = {
+        "layout_id": data[0]["layout_id"],
+        "layout_code": data[0]["layout_code"],
+        "style_type": data[0]["style_type"],
+        "operation_data": [
+            {
+                "operation_name": row["operation_name"],
+                "machine_name": row["machine_name"],
+                "sequence_number": row["operation_seq"]
+            }
+            for row in data
+        ]
+    }
+    return ob_data

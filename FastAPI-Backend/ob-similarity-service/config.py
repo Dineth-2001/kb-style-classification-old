@@ -6,12 +6,15 @@ load_dotenv()
 
 
 class Settings(BaseSettings):
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
-    CLIENT_URL: str = os.getenv("CLIENT_URL", "http://localhost:3000")
-    DATABASE_URL: str = os.getenv("DATABASE_URL")
+    ENVIRONMENT: str = "development"
+    CLIENT_URL: str = "http://localhost:3000"
+    DATABASE_URL: str | None = None
 
-    class Config:
-        env_file = ".env"
+    model_config = {
+        "env_file": ".env",
+        # ignore extra env vars such as DATABASE_USERNAME/PASSWORD
+        "extra": "ignore",
+    }
 
 
 settings = Settings()

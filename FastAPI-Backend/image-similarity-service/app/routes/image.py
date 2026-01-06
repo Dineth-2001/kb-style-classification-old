@@ -46,9 +46,9 @@ async def save(
     try:
         # compute CLIP embedding directly (no preprocessing)
         feature_vector = get_feature_vector_pretrained(image_bytes, i_type=None)
-        # upsert to Postgres vector table
+        # insert to Postgres vector table
         pg_connect.init_table()
-        pg_connect.upsert_vector(form_data.tenant_id, form_data.style_number, image_url, feature_vector)
+        image_id = pg_connect.upsert_vector(form_data.tenant_id, form_data.style_number, image_url, feature_vector)
     except Exception as e:
         # try to delete uploaded S3 object on failure
         try:
@@ -57,21 +57,21 @@ async def save(
             pass
         raise HTTPException(status_code=500, detail=str(e))
 
-    return {"message": "Image saved successfully", "id": form_data.tenant_id}
+    return {"message": "Image saved successfully", "image_id": image_id, "tenant_id": form_data.tenant_id}
 
 
 @image_router.delete("/delete-image")
-async def delete(tenant_id: str = Form(...)):
+async def delete(image_id: int = Form(...)):
     # delete vector row from Postgres and remove S3 object
     try:
-        image_url = pg_connect.delete_vector(tenant_id)
+        image_url = pg_connect.delete_vector(image_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error deleting fvector from database: " + str(e))
 
     if not image_url:
         raise HTTPException(
             status_code=404,
-            detail="No image found with the given tenant id",
+            detail="No image found with the given image_id",
         )
 
     try:
@@ -91,6 +91,7 @@ async def update_image(
     image: UploadFile = File(...),
     style_number: str = Form(...),
     tenant_id: str = Form(...),
+    image_id: int = Form(...),
 ):
     try:
         image_bytes = await image.read()
@@ -100,11 +101,16 @@ async def update_image(
     # Get old image URL before update
     old_image_url = None
     try:
-        rows = pg_connect.fetch_vectors(tenant_id=tenant_id)
-        if rows:
-            old_image_url = rows[0].get('image_url')
+        rows = pg_connect.fetch_vectors()
+        for row in rows:
+            if row.get('id') == image_id:
+                old_image_url = row.get('image_url')
+                break
     except Exception:
         pass
+    
+    if not old_image_url:
+        raise HTTPException(status_code=404, detail="Image not found with given image_id")
 
     # Upload new image with tenant_id prefix
     file_name = f"{tenant_id}/{uuid.uuid4()}.png"
@@ -115,9 +121,11 @@ async def update_image(
 
     try:
         feature_vector = get_feature_vector_pretrained(image_bytes, i_type=None)
-        # upsert to Postgres
+        # update in Postgres
         pg_connect.init_table()
-        pg_connect.upsert_vector(tenant_id, style_number, image_url, feature_vector)
+        success = pg_connect.update_vector(image_id, tenant_id, style_number, image_url, feature_vector)
+        if not success:
+            raise Exception("Failed to update vector")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -131,10 +139,11 @@ async def update_image(
         except Exception:
             pass  
 
-    return {"message": "Image updated successfully", "id": tenant_id}
+    return {"message": "Image updated successfully", "image_id": image_id, "tenant_id": tenant_id}
 
 class SimilarImageResult(BaseModel):
     """Response model for similar images."""
+    image_id: int
     tenant_id: str
     style_number: str
     image_url: str
@@ -145,6 +154,7 @@ class SimilarImageResult(BaseModel):
 class SearchAndStoreResponse(BaseModel):
     """Response model for search-and-store endpoint."""
     message: str
+    image_id: int
     uploaded_tenant_id: str
     image_url: str
     similar_images: List[SimilarImageResult]
@@ -246,10 +256,11 @@ async def search_and_store(
             pass  # Continue even if we can't fetch the image
 
         similar_images.append(SimilarImageResult(
+            image_id=result['id'],
             tenant_id=result['tenant_id'],
             style_number=result.get('style_number', ''),
             image_url=result.get('image_url', ''),
-            similarity=result.get('similarity', 0.0),
+            similarity=result.get('similarity_score', 0.0),
             image_base64=image_base64
         ))
 
@@ -264,7 +275,7 @@ async def search_and_store(
 
     # Store the embedding in PostgreSQL
     try:
-        pg_connect.upsert_vector(tenant_id, style_number, image_url, feature_vector)
+        image_id = pg_connect.upsert_vector(tenant_id, style_number, image_url, feature_vector)
     except Exception as e:
         # Try to clean up S3 on failure
         try:
@@ -275,6 +286,7 @@ async def search_and_store(
 
     return SearchAndStoreResponse(
         message="Image searched, stored in S3, and embedding saved to database successfully",
+        image_id=image_id,
         uploaded_tenant_id=tenant_id,
         image_url=image_url,
         similar_images=similar_images

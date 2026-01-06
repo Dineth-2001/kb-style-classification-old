@@ -15,432 +15,347 @@ class OperationData(BaseModel):
     sequence_number: int
 
 
-# Define main request model
-class RequestModel(BaseModel):
-    search_type: str
-    allocation_data: Optional[bool] = False
-    tenant_id: str
-    style_type: str
-    image_orientation: Optional[str] = None
-    no_of_results_img: Optional[int] = 10
-    no_of_results_ob: Optional[int] = 10
-    no_of_allocations: Optional[int] = 5
-    operation_data: Optional[List[OperationData]] = None
-
-
-class RequestModelDatasource(BaseModel):
-    tenant_id: str
-    style_type: str
-    allocation_data: Optional[bool] = False
-    no_of_results: Optional[int] = 10
-    no_of_allocations: Optional[int] = 5
-    operation_data: List[OperationData]
-
-
-@search_router.post("/search/")
-async def search(
-    search_type: str = Form(
-        ..., regex="^(ob_only|image_only|ob_and_image)", example="ob_and_img"
-    ),
-    allocation_data: Optional[bool] = Form(
-        False, example=True, description="Flag to include allocation data"
-    ),
-    tenant_id: str = Form(..., example="3"),
-    style_type: str = Form(..., example="LADIES BRIEF - TEZENIS BEACHWEAR"),
-    image_orientation: Optional[str] = Form(
-        None,
-        regex="^(portrait|landscape|square)$",
-        description="Image orientation must be one of 'portrait', 'landscape', or 'square'",
-    ),
-    no_of_results_img: Optional[int] = Form(10),
-    no_of_results_ob: Optional[int] = Form(10),
-    no_of_allocations: Optional[int] = Form(5),
-    operation_data: Optional[str] = Form(
-        None,
-        description="List of operation data: [{ 'operation_name': 'operation1', 'machine_name': 'machine1', 'sequence_number': 1 }, { 'operation_name': 'operation2', 'machine_name': 'machine2', 'sequence_number': 2 }]",
-        example="[{ 'operation_name': 'operation1', 'machine_name': 'machine1', 'sequence_number': 1 }, { 'operation_name': 'operation2', 'machine_name': 'machine2', 'sequence_number': 2 }]",
-    ),
-    image_front: Optional[UploadFile] = File(None),
-    image_back: Optional[UploadFile] = File(None),
-):
-
+# GET OB BY LAYOUT CODE - Fetch OB data using tenant_id and style_number
+@search_router.get("/get-ob/{tenant_id}/{style_number}")
+async def get_ob_by_style_number(tenant_id: int, style_number: str):
+    """
+    Fetch OB data for a specific style_number (layout_code).
+    
+    This endpoint retrieves the Operation Bulletin for a given tenant and style_number.
+    The style_number is the same as layout_code in the database.
+    
+    Args:
+        tenant_id: The tenant ID
+        style_number: The style number (also known as layout_code)
+        
+    Returns:
+        OB data including operation_data (list of operations with machine names and sequences)
+    """
     try:
-        if search_type == "ob_only":
-            if operation_data:
-                try:
-                    operation_data_parsed = json.loads(operation_data.replace("\n", ""))
-                    if not isinstance(operation_data_parsed, list):
-                        raise HTTPException(
-                            status_code=400, detail="operation_data must be a list"
-                        )
-                except json.JSONDecodeError:
-                    raise HTTPException(
-                        status_code=400, detail="Invalid JSON for operation_data"
-                    )
-
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail="operation_data is required for 'ob_only' search type",
-                )
-
-            # Prepare request data
-            request_data = RequestModel(
-                search_type=search_type,
-                allocation_data=allocation_data,
-                tenant_id=tenant_id,
-                style_type=style_type,
-                no_of_results_ob=no_of_results_ob,
-                no_of_allocations=no_of_allocations,
-                operation_data=operation_data_parsed,
-            )
-
-            # Perform operation based search
-            request_data_ob = {
-                "tenant_id": int(tenant_id),
-                "allocation_data": allocation_data,
-                "style_type": style_type,
-                "no_of_results": no_of_results_ob,
-                "no_of_allocations": no_of_allocations,
-                "operation_data": (
-                    [data.model_dump() for data in request_data.operation_data]
-                    if request_data.operation_data
-                    else None
-                ),
-            }
-
-            # Call operation based search service
-            ob_search_url = f"{settings.OB_SIMILARITY_SERVICE_URL}/ob/search"
-            try:
-                response = requests.post(
-                    ob_search_url,
-                    json=request_data_ob,
-                    timeout=360,  # 6 minutes timeout
-                )
-                response.raise_for_status()
-            except requests.Timeout:
-                raise HTTPException(
-                    status_code=504, detail="Operation based search service timed out"
-                )
-
-            # Prepare response data
-            response_data = {
-                "search_type": search_type,
-                "allocation_data": allocation_data,
-                "style_type": style_type,
-                "tenant_id": tenant_id,
-                "no_of_results": response.json().get("no_of_results"),
-                "total_obs": response.json().get("total_obs"),
-                "process_time": response.json().get("process_time"),
-                "operation_results": response.json().get("results"),
-            }
-            return JSONResponse(content=response_data)
-
-        elif search_type == "image_only":
-            request_data = RequestModel(
-                search_type=search_type,
-                tenant_id=tenant_id,
-                style_type=style_type,
-                image_orientation=image_orientation,
-                no_of_results_img=no_of_results_img,
-            )
-
-            # Perform image based search
-            try:
-                image_front_bytes = await image_front.read()
-                image_back_bytes = await image_back.read()
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400, detail="Error reading uploaded image files"
-                )
-
-            # Prepare multipart/form-data payload
-            files = {
-                "image_front": (
-                    image_front.filename,
-                    image_front_bytes,
-                    image_front.content_type,
-                ),
-                "image_back": (
-                    image_back.filename,
-                    image_back_bytes,
-                    image_back.content_type,
-                ),
-            }
-            data = {
-                "tenant_id": tenant_id,
-                "style_type": style_type,
-                "image_orientation": image_orientation,
-                "no_of_results": no_of_results_img,
-            }
-
-            # Call image based search service
-            image_search_url = (
-                f"{settings.IMAGE_SIMILARITY_SERVICE_URL}/img/search-image"
-            )
-            try:
-                response = requests.post(
-                    image_search_url,
-                    data=data,
-                    files=files,
-                    timeout=360,  # 6 minutes timeout
-                )
-                response.raise_for_status()
-            except requests.Timeout:
-                raise HTTPException(
-                    status_code=504, detail="Image based search service timed out"
-                )
-
-            response_data = {
-                "search_type": search_type,
-                "style_type": style_type,
-                "tenant_id": tenant_id,
-                "no_of_results": response.json().get("no_of_results"),
-                "total_images": response.json().get("total_images"),
-                "process_time": response.json().get("process_time"),
-                "image_results": response.json().get("results"),
-            }
-            return JSONResponse(content=response_data)
-
-        elif search_type == "ob_and_image":
-            try:
-                image_front_bytes = await image_front.read()
-                image_back_bytes = await image_back.read()
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400, detail="Error reading uploaded image files"
-                )
-
-            if operation_data:
-                try:
-                    operation_data_parsed = json.loads(operation_data.replace("\n", ""))
-                    if not isinstance(operation_data_parsed, list):
-                        raise HTTPException(
-                            status_code=400, detail="operation_data must be a list"
-                        )
-                except json.JSONDecodeError:
-                    raise HTTPException(
-                        status_code=400, detail="Invalid JSON for operation_data"
-                    )
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail="operation_data is required for 'ob_and_image' search type",
-                )
-
-            request_data = RequestModel(
-                search_type=search_type,
-                allocation_data=allocation_data,
-                tenant_id=tenant_id,
-                style_type=style_type,
-                image_orientation=image_orientation,
-                no_of_results_img=no_of_results_img,
-                no_of_results_ob=no_of_results_ob,
-                operation_data=operation_data_parsed,
-            )
-
-            # Perform operation based search
-            request_data_ob = {
-                "tenant_id": int(tenant_id),
-                "allocation_data": allocation_data,
-                "style_type": style_type,
-                "no_of_results": no_of_results_ob,
-                "operation_data": (
-                    [data.model_dump() for data in request_data.operation_data]
-                    if request_data.operation_data
-                    else None
-                ),
-            }
-
-            # Call operation based search service
-            ob_search_url = f"{settings.OB_SIMILARITY_SERVICE_URL}/ob/search"
-
-            try:
-                response_ob = requests.post(
-                    ob_search_url,
-                    json=request_data_ob,
-                    timeout=360,  # 6 minutes timeout
-                )
-                response_ob.raise_for_status()
-            except requests.Timeout:
-                raise HTTPException(
-                    status_code=504, detail="Operation based search service timed out"
-                )
-
-            # Perform image based search
-            # Prepare multipart/form-data payload
-            files = {
-                "image_front": (
-                    image_front.filename,
-                    image_front_bytes,
-                    image_front.content_type,
-                ),
-                "image_back": (
-                    image_back.filename,
-                    image_back_bytes,
-                    image_back.content_type,
-                ),
-            }
-            data = {
-                "tenant_id": tenant_id,
-                "style_type": style_type,
-                "image_orientation": image_orientation,
-                "no_of_results": no_of_results_img,
-            }
-
-            # Call image based search service
-            image_search_url = (
-                f"{settings.IMAGE_SIMILARITY_SERVICE_URL}/img/search-image"
-            )
-            try:
-                response_img = requests.post(
-                    image_search_url,
-                    data=data,
-                    files=files,
-                    timeout=360,  # 6 minutes timeout
-                )
-                response_img.raise_for_status()
-            except requests.Timeout:
-                raise HTTPException(
-                    status_code=504, detail="Image based search service timed out"
-                )
-
-            # Prepare response data
-            response_data = {
-                "search_type": search_type,
-                "style_type": style_type,
-                "tenant_id": tenant_id,
-                "no_of_results_ob": response_ob.json().get("no_of_results"),
-                "total_obs": response_ob.json().get("total_obs"),
-                "no_of_results_img": response_img.json().get("no_of_results"),
-                "total_images": response_img.json().get("total_images"),
-                "process_time_ob": response_ob.json().get("process_time"),
-                "process_time_img": response_img.json().get("process_time"),
-                "ob_similarity_results": response_ob.json().get("results"),
-                "img_similarity_results": response_img.json().get("results"),
-            }
-
-            return JSONResponse(content=response_data)
-
-        else:
+        ob_url = f"{settings.OB_SIMILARITY_SERVICE_URL}/ob/get-ob-by-layout/{tenant_id}/{style_number}"
+        response = requests.get(ob_url, timeout=60)
+        
+        if response.status_code == 404:
             raise HTTPException(
-                status_code=400,
-                detail="Invalid search type. Must be one of 'ob_only', 'image_only', or 'ob_and_image'",
+                status_code=404,
+                detail=f"No OB found for tenant_id={tenant_id} and style_number={style_number}"
             )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        
+        response.raise_for_status()
+        return JSONResponse(content=response.json())
+
+    except requests.Timeout:
+        raise HTTPException(status_code=504, detail="OB service timed out")
+    except requests.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching OB: {str(e)}")
 
 
-@search_router.post("/search-ds/")
-async def search_ob_ds(
-    ob_datasource: UploadFile = File(...),
-    allocation_datasource: Optional[UploadFile] = File(None),
-    tenant_id: str = Form(..., example="3"),
-    style_type: str = Form(..., example="LADIES BRIEF - TEZENIS BEACHWEAR"),
-    allocation_data: Optional[bool] = Form(..., example=True),
-    no_of_results: Optional[int] = Form(10),
-    no_of_allocations: Optional[int] = Form(5),
-    operation_data: str = Form(
-        ...,
-        example="[{ 'operation_name': 'operation1', 'machine_name': 'machine1', 'sequence_number': 1 }, { 'operation_name': 'operation2', 'machine_name': 'machine2', 'sequence_number': 2 }]",
-    ),
+# 2. GET MULTIPLE OBs - Fetch OBs for multiple style_numbers at once
+@search_router.post("/get-obs")
+async def get_multiple_obs(
+    tenant_id: str = Form(...),
+    style_numbers: str = Form(..., description="JSON array of style_numbers: [\"style1\", \"style2\"]"),
 ):
+    """
+    Fetch OB data for multiple style_numbers at once.
+    
+    This is useful after finding similar images - you can fetch all their OBs in one call.
+    
+    Args:
+        tenant_id: The tenant ID
+        style_numbers: JSON array of style_numbers to fetch OBs for
+        
+    Returns:
+        List of OB data for each style_number
+    """
     try:
-        if allocation_data:
-            try:
-                ob_datasource_json = json.loads(await ob_datasource.read())
-                allocation_datasource_json = json.loads(
-                    await allocation_datasource.read()
-                )
+        style_number_list = json.loads(style_numbers)
+        if not isinstance(style_number_list, list):
+            raise HTTPException(status_code=400, detail="style_numbers must be a JSON array")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON for style_numbers")
 
-            except json.JSONDecodeError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid JSON for datasource"
-                )
-
-        else:
-            try:
-                ob_datasource_json = json.loads(await ob_datasource.read())
-            except json.JSONDecodeError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid JSON for datasource"
-                )
-
+    results = []
+    for style_number in style_number_list:
         try:
-            operation_data_parsed = json.loads(operation_data.replace("\n", ""))
-            if not isinstance(operation_data_parsed, list):
-                raise HTTPException(
-                    status_code=400, detail="operation_data must be a list"
-                )
-        except json.JSONDecodeError:
-            raise HTTPException(
-                status_code=400, detail="Invalid JSON for operation_data"
-            )
+            ob_url = f"{settings.OB_SIMILARITY_SERVICE_URL}/ob/get-ob-by-layout/{tenant_id}/{style_number}"
+            response = requests.get(ob_url, timeout=30)
+            
+            if response.status_code == 200:
+                ob_data = response.json()
+                ob_data["style_number"] = style_number
+                results.append(ob_data)
+            else:
+                results.append({
+                    "style_number": style_number,
+                    "error": "OB not found",
+                    "ob_data": None
+                })
+        except Exception as e:
+            results.append({
+                "style_number": style_number,
+                "error": str(e),
+                "ob_data": None
+            })
 
-        # Prepare request data
-        request_data = RequestModelDatasource(
-            tenant_id=tenant_id,
-            style_type=style_type,
-            allocation_data=allocation_data,
-            no_of_results=no_of_results,
-            no_of_allocations=no_of_allocations,
-            operation_data=operation_data_parsed,
+    return JSONResponse(content={
+        "tenant_id": tenant_id,
+        "total_requested": len(style_number_list),
+        "total_found": len([r for r in results if "error" not in r]),
+        "obs": results
+    })
+
+
+# COMPARE OB - Compare user's OB with existing OBs
+@search_router.post("/compare-ob")
+async def compare_ob(
+    tenant_id: str = Form(...),
+    style_type: str = Form(..., description="Style type to search within"),
+    operation_data: str = Form(..., description="JSON array of user's OB operations"),
+    no_of_results: int = Form(10, description="Number of similar OBs to return"),
+    allocation_data: bool = Form(False, description="Include allocation data in results"),
+    no_of_allocations: int = Form(5, description="Number of allocations to include per result"),
+):
+    """
+    Compare a user-created OB with existing OBs to find similarity scores.
+
+    1. Takes the user's new OB 
+    2. Compares it against all existing OBs of the same style_type
+    3. Returns ranked results based on similarity score
+    
+    Args:
+        tenant_id: The tenant ID
+        style_type: The style type to search within (e.g., "LADIES BRIEF - TEZENIS BEACHWEAR")
+        operation_data: JSON array of operations: [{"operation_name": "...", "machine_name": "...", "sequence_number": 1}]
+        no_of_results: Number of similar OBs to return (default: 10)
+        allocation_data: Whether to include allocation data (default: False)
+        no_of_allocations: Number of allocations per result (default: 5)
+        
+    Returns:
+        Ranked list of similar OBs with similarity scores
+    """
+    try:
+        ops_parsed = json.loads(operation_data)
+        if not isinstance(ops_parsed, list):
+            raise HTTPException(status_code=400, detail="operation_data must be a JSON array")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON for operation_data")
+
+    request_data = {
+        "tenant_id": int(tenant_id),
+        "style_type": style_type,
+        "allocation_data": allocation_data,
+        "no_of_results": no_of_results,
+        "no_of_allocations": no_of_allocations,
+        "operation_data": ops_parsed,
+    }
+
+    try:
+        ob_search_url = f"{settings.OB_SIMILARITY_SERVICE_URL}/ob/search"
+        response = requests.post(
+            ob_search_url,
+            json=request_data,
+            timeout=360,
         )
-
-        if allocation_data:
-            request_ds = {
-                "tenant_id": tenant_id,
-                "style_type": style_type,
-                "allocation_data": allocation_data,
-                "no_of_results": no_of_results,
-                "no_of_allocations": no_of_allocations,
-                "operation_data": (
-                    [data.model_dump() for data in request_data.operation_data]
-                ),
-                "ob_datasource": ob_datasource_json,
-                "allocation_datasource": allocation_datasource_json,
-            }
-
-        else:
-
-            request_ds = {
-                "tenant_id": tenant_id,
-                "style_type": style_type,
-                "allocation_data": allocation_data,
-                "no_of_results": no_of_results,
-                "no_of_allocations": no_of_allocations,
-                "operation_data": (
-                    [data.model_dump() for data in request_data.operation_data]
-                ),
-                "ob_datasource": ob_datasource_json,
-            }
-
-        try:
-            search_url = f"{settings.OB_SIMILARITY_SERVICE_URL}/ob/search-ds"
-            response = requests.post(
-                search_url,
-                json=request_ds,
-                timeout=360,  # 6 minutes timeout
-            )
-
-            response.raise_for_status()
-        except requests.Timeout:
-            raise HTTPException(
-                status_code=504, detail="Operation based search service timed out"
-            )
-
+        response.raise_for_status()
+        
+        result = response.json()
+        
         response_data = {
+            "message": "OB comparison completed",
             "tenant_id": tenant_id,
             "style_type": style_type,
-            "no_of_results": response.json().get("no_of_results"),
-            "total_obs": response.json().get("total_obs"),
-            "process_time": response.json().get("process_time"),
-            "operation_results": response.json().get("results"),
+            "total_obs_compared": result.get("total_obs"),
+            "no_of_results": result.get("no_of_results"),
+            "process_time": result.get("process_time"),
+            "similar_obs": result.get("results", []),
         }
-
+        
         return JSONResponse(content=response_data)
 
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except requests.Timeout:
+        raise HTTPException(status_code=504, detail="OB similarity service timed out")
+    except requests.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"Error comparing OBs: {str(e)}")
+
+
+# COMPARE OB WITH SPECIFIC LAYOUT CODES - Compare with OBs of similar images only
+@search_router.post("/compare-ob-filtered")
+async def compare_ob_filtered(
+    tenant_id: str = Form(...),
+    style_type: str = Form(...),
+    operation_data: str = Form(..., description="JSON array of user's OB operations"),
+    layout_codes: str = Form(..., description="JSON array of layout_codes to compare against"),
+):
+    """
+    Compare user's OB with specific OBs (filtered by layout_codes).
+    
+    Use this after finding similar images to compare your new OB only against
+    the OBs of those similar images.
+    
+    Args:
+        tenant_id: The tenant ID
+        style_type: The style type
+        operation_data: JSON array of user's operations
+        layout_codes: JSON array of layout_codes to filter results (e.g., from similar images)
+        
+    Returns:
+        Filtered and ranked OB comparison results
+    """
+    try:
+        ops_parsed = json.loads(operation_data)
+        codes_parsed = json.loads(layout_codes)
+        if not isinstance(ops_parsed, list) or not isinstance(codes_parsed, list):
+            raise HTTPException(status_code=400, detail="Both operation_data and layout_codes must be JSON arrays")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON format")
+
+    request_data = {
+        "tenant_id": int(tenant_id),
+        "style_type": style_type,
+        "allocation_data": False,
+        "no_of_results": 100,  # Get more results to filter
+        "no_of_allocations": 3,
+        "operation_data": ops_parsed,
+    }
+
+    try:
+        ob_search_url = f"{settings.OB_SIMILARITY_SERVICE_URL}/ob/search"
+        response = requests.post(
+            ob_search_url,
+            json=request_data,
+            timeout=360,
+        )
+        response.raise_for_status()
+        result = response.json()
+        
+        # Filter results to only include specified layout_codes
+        all_results = result.get("results", [])
+        filtered_results = [
+            r for r in all_results 
+            if r.get("layout_code") in codes_parsed
+        ]
+        
+        return JSONResponse(content={
+            "message": "Filtered OB comparison completed",
+            "tenant_id": tenant_id,
+            "style_type": style_type,
+            "total_compared": len(filtered_results),
+            "similar_obs": filtered_results,
+        })
+
+    except requests.Timeout:
+        raise HTTPException(status_code=504, detail="OB similarity service timed out")
+    except requests.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"Error comparing OBs: {str(e)}")
+
+
+# FULL WORKFLOW - Search images, get OBs, and compare
+@search_router.post("/search-images-with-obs")
+async def search_images_with_obs(
+    image: UploadFile = File(...),
+    tenant_id: str = Form(...),
+    style_number: str = Form(..., description="Style number for the new image"),
+    top_k: int = Form(10, description="Number of similar images to return"),
+    store_image: bool = Form(True, description="Whether to store the new image"),
+):
+    """
+    Complete workflow: Search for similar images and fetch their OBs.
+    
+    This endpoint:
+    1. Uploads the new image
+    2. Finds similar images across all tenants
+    3. Optionally stores the new image with its embeddings
+    4. For each similar image, fetches its OB using the style_number (layout_code)
+    5. Returns combined results
+    
+    Args:
+        image: The image file to search with
+        tenant_id: Tenant ID for the new image
+        style_number: Style number (layout_code) for the new image
+        top_k: Number of similar images to return (default: 10)
+        store_image: Whether to store the new image (default: True)
+        
+    Returns:
+        Similar images with their OB data
+    """
+    try:
+        image_bytes = await image.read()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=f"Error reading image: {str(e)}")
+
+    # Search (and optionally store) the image
+    try:
+        files = {"image": (image.filename, image_bytes, image.content_type)}
+        
+        if store_image:
+            # Use search-and-store endpoint
+            data = {
+                "style_number": style_number,
+                "tenant_id": tenant_id,
+                "top_k": top_k,
+            }
+            img_url = f"{settings.IMAGE_SIMILARITY_SERVICE_URL}/img/search-and-store"
+        else:
+            # Use find-similar-tenants endpoint (search only)
+            data = {"top_k": top_k}
+            img_url = f"{settings.IMAGE_SIMILARITY_SERVICE_URL}/search/find-similar-tenants"
+        
+        response = requests.post(img_url, files=files, data=data, timeout=180)
+        response.raise_for_status()
+        img_result = response.json()
+
+    except requests.Timeout:
+        raise HTTPException(status_code=504, detail="Image service timed out")
+    except requests.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"Error searching images: {str(e)}")
+
+    # Extract similar images
+    if store_image:
+        similar_images = img_result.get("similar_images", [])
+        new_image_id = img_result.get("image_id")
+        new_image_url = img_result.get("image_url")
+    else:
+        similar_images = img_result if isinstance(img_result, list) else []
+        new_image_id = None
+        new_image_url = None
+
+    # Fetch OBs for each similar image
+    results_with_ob = []
+    for sim_img in similar_images:
+        img_tenant_id = sim_img.get("tenant_id")
+        img_style_number = sim_img.get("style_number")
+        
+        ob_data = None
+        if img_style_number:
+            try:
+                ob_url = f"{settings.OB_SIMILARITY_SERVICE_URL}/ob/get-ob-by-layout/{img_tenant_id}/{img_style_number}"
+                ob_response = requests.get(ob_url, timeout=30)
+                if ob_response.status_code == 200:
+                    ob_data = ob_response.json()
+            except Exception:
+                pass  # OB not found, continue
+        
+        results_with_ob.append({
+            "image_id": sim_img.get("image_id"),
+            "tenant_id": img_tenant_id,
+            "style_number": img_style_number,
+            "image_url": sim_img.get("image_url"),
+            "similarity": sim_img.get("similarity") or sim_img.get("similarity_score"),
+            "ob_data": ob_data,
+        })
+
+    response_data = {
+        "message": "Search completed successfully",
+        "new_image": {
+            "stored": store_image,
+            "image_id": new_image_id,
+            "tenant_id": tenant_id,
+            "style_number": style_number,
+            "image_url": new_image_url,
+        },
+        "similar_images_count": len(results_with_ob),
+        "similar_images": results_with_ob,
+    }
+
+    return JSONResponse(content=response_data)

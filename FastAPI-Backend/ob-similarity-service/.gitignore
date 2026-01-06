@@ -6,3 +6,4 @@ data/similarity_data/
 
 data_tables.txt
 .env
+venv/
