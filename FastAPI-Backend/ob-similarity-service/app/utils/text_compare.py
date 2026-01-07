@@ -136,45 +136,30 @@ def compare_ob(operation_machine_list, database_records):
 
 def compare_ob_v2(operation_machine_list, database_records):
     operation_name_similarity_score = list()
-    machine_name_similarity_score = list()
 
     for operation_data in operation_machine_list:
         operation_name = operation_data[0]
-        machine_name = operation_data[1]
 
         operation_name_scores = list()
-        machine_name_scores = list()
 
         for record in database_records:
             operation_name_ref = record[0]
-            machine_name_ref = record[1]
 
             operation_name_score = get_similarity_score(
                 operation_name, operation_name_ref
             )
-            machine_name_score = get_absolute_similarity_score(
-                machine_name, machine_name_ref
-            )
 
             operation_name_scores.append(operation_name_score)
-            machine_name_scores.append(machine_name_score)
 
         max_operation_name_score = max(operation_name_scores)
-        max_machine_name_score = max(machine_name_scores)
 
         operation_name_similarity_score.append(max_operation_name_score)
-        machine_name_similarity_score.append(max_machine_name_score)
 
     avg_operation_name_similarity_score = np.mean(operation_name_similarity_score)
-    avg_machine_name_similarity_score = np.mean(machine_name_similarity_score)
-    avg_total_similarity_score = (
-        avg_operation_name_similarity_score + avg_machine_name_similarity_score
-    ) / 2
 
     return {
         "operation_similarity_score": avg_operation_name_similarity_score,
-        "machine_similarity_score": avg_machine_name_similarity_score,
-        "total_similarity_score": avg_total_similarity_score,
+        "total_similarity_score": avg_operation_name_similarity_score,
     }
 
 
@@ -204,11 +189,7 @@ def get_ob_similarity_score(operation_data, database_records):
                 "operation_similarity_score": similarity_scores[
                     "operation_similarity_score"
                 ],
-                "machine_similarity_score": similarity_scores[
-                    "machine_similarity_score"
-                ],
                 "total_similarity_score": similarity_scores["total_similarity_score"],
-                # "operation_similarity_score_v2": similarity_scores_v2,
             }
         )
 
@@ -231,7 +212,6 @@ def process_record(record, operation_machine_list):
         "layout_id": record["layout_id"],
         "layout_code": record["layout_code"],
         "operation_similarity_score": similarity_scores["operation_similarity_score"],
-        "machine_similarity_score": similarity_scores["machine_similarity_score"],
         "total_similarity_score": similarity_scores["total_similarity_score"],
     }
 

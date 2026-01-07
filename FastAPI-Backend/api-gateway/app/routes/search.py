@@ -26,10 +26,10 @@ async def get_ob_by_style_number(tenant_id: int, style_number: str):
     
     Args:
         tenant_id: The tenant ID
-        style_number: The style number (also known as layout_code)
+        style_number: The style number / layout_code
         
     Returns:
-        OB data including operation_data (list of operations with machine names and sequences)
+        OB data (list of operations with machine names and sequences)
     """
     try:
         ob_url = f"{settings.OB_SIMILARITY_SERVICE_URL}/ob/get-ob-by-layout/{tenant_id}/{style_number}"
@@ -59,7 +59,7 @@ async def get_multiple_obs(
     """
     Fetch OB data for multiple style_numbers at once.
     
-    This is useful after finding similar images - you can fetch all their OBs in one call.
+    This is useful after finding similar images. Can fetch all their OBs in one call.
     
     Args:
         tenant_id: The tenant ID
@@ -203,7 +203,7 @@ async def compare_ob_filtered(
     """
     Compare user's OB with specific OBs (filtered by layout_codes).
     
-    Use this after finding similar images to compare your new OB only against
+    Use this after finding similar images to compare the new OB only against
     the OBs of those similar images.
     
     Args:
