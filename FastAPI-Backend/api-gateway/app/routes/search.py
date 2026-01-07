@@ -50,7 +50,7 @@ async def get_ob_by_style_number(tenant_id: int, style_number: str):
         raise HTTPException(status_code=500, detail=f"Error fetching OB: {str(e)}")
 
 
-# 2. GET MULTIPLE OBs - Fetch OBs for multiple style_numbers at once
+# GET MULTIPLE OBs - Fetch OBs for multiple style_numbers at once
 @search_router.post("/get-obs")
 async def get_multiple_obs(
     tenant_id: str = Form(...),
@@ -109,9 +109,9 @@ async def get_multiple_obs(
 # COMPARE OB - Compare user's OB with existing OBs
 @search_router.post("/compare-ob")
 async def compare_ob(
-    tenant_id: str = Form(...),
-    style_type: str = Form(..., description="Style type to search within"),
+    tenant_ids: str = Form(..., description="JSON array of tenant IDs: [3, 5, 7]"),
     operation_data: str = Form(..., description="JSON array of user's OB operations"),
+    style_type: Optional[str] = Form(None, description="Style type to search within (optional)"),
     no_of_results: int = Form(10, description="Number of similar OBs to return"),
     allocation_data: bool = Form(False, description="Include allocation data in results"),
     no_of_allocations: int = Form(5, description="Number of allocations to include per result"),
@@ -120,13 +120,13 @@ async def compare_ob(
     Compare a user-created OB with existing OBs to find similarity scores.
 
     1. Takes the user's new OB 
-    2. Compares it against all existing OBs of the same style_type
+    2. Compares it against all existing OBs across the specified tenants (optionally filtered by style_type)
     3. Returns ranked results based on similarity score
     
     Args:
-        tenant_id: The tenant ID
-        style_type: The style type to search within (e.g., "LADIES BRIEF - TEZENIS BEACHWEAR")
+        tenant_ids: JSON array of tenant IDs to search across (e.g., [3, 5, 7])
         operation_data: JSON array of operations: [{"operation_name": "...", "machine_name": "...", "sequence_number": 1}]
+        style_type: Optional style type to filter (e.g., "LADIES BRIEF - TEZENIS BEACHWEAR"). If not provided, searches all style types.
         no_of_results: Number of similar OBs to return (default: 10)
         allocation_data: Whether to include allocation data (default: False)
         no_of_allocations: Number of allocations per result (default: 5)
@@ -141,14 +141,27 @@ async def compare_ob(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON for operation_data")
 
+    try:
+        tenant_ids_parsed = json.loads(tenant_ids)
+        if not isinstance(tenant_ids_parsed, list):
+            raise HTTPException(status_code=400, detail="tenant_ids must be a JSON array")
+        tenant_ids_parsed = [int(tid) for tid in tenant_ids_parsed]
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON for tenant_ids")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="All tenant_ids must be valid integers")
+
     request_data = {
-        "tenant_id": int(tenant_id),
-        "style_type": style_type,
+        "tenant_ids": tenant_ids_parsed,
         "allocation_data": allocation_data,
         "no_of_results": no_of_results,
         "no_of_allocations": no_of_allocations,
         "operation_data": ops_parsed,
     }
+    
+    # Only include style_type if provided
+    if style_type:
+        request_data["style_type"] = style_type
 
     try:
         ob_search_url = f"{settings.OB_SIMILARITY_SERVICE_URL}/ob/search"
@@ -163,7 +176,7 @@ async def compare_ob(
         
         response_data = {
             "message": "OB comparison completed",
-            "tenant_id": tenant_id,
+            "tenant_ids": tenant_ids_parsed,
             "style_type": style_type,
             "total_obs_compared": result.get("total_obs"),
             "no_of_results": result.get("no_of_results"),
@@ -182,10 +195,10 @@ async def compare_ob(
 # COMPARE OB WITH SPECIFIC LAYOUT CODES - Compare with OBs of similar images only
 @search_router.post("/compare-ob-filtered")
 async def compare_ob_filtered(
-    tenant_id: str = Form(...),
-    style_type: str = Form(...),
+    tenant_ids: str = Form(..., description="JSON array of tenant IDs: [3, 5, 7]"),
     operation_data: str = Form(..., description="JSON array of user's OB operations"),
     layout_codes: str = Form(..., description="JSON array of layout_codes to compare against"),
+    style_type: Optional[str] = Form(None, description="Style type to filter (optional)"),
 ):
     """
     Compare user's OB with specific OBs (filtered by layout_codes).
@@ -194,10 +207,10 @@ async def compare_ob_filtered(
     the OBs of those similar images.
     
     Args:
-        tenant_id: The tenant ID
-        style_type: The style type
+        tenant_ids: JSON array of tenant IDs to search across (e.g., [3, 5, 7])
         operation_data: JSON array of user's operations
         layout_codes: JSON array of layout_codes to filter results (e.g., from similar images)
+        style_type: Optional style type to filter (if not provided, searches all style types)
         
     Returns:
         Filtered and ranked OB comparison results
@@ -210,14 +223,27 @@ async def compare_ob_filtered(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON format")
 
+    try:
+        tenant_ids_parsed = json.loads(tenant_ids)
+        if not isinstance(tenant_ids_parsed, list):
+            raise HTTPException(status_code=400, detail="tenant_ids must be a JSON array")
+        tenant_ids_parsed = [int(tid) for tid in tenant_ids_parsed]
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON for tenant_ids")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="All tenant_ids must be valid integers")
+
     request_data = {
-        "tenant_id": int(tenant_id),
-        "style_type": style_type,
+        "tenant_ids": tenant_ids_parsed,
         "allocation_data": False,
         "no_of_results": 100,  # Get more results to filter
         "no_of_allocations": 3,
         "operation_data": ops_parsed,
     }
+    
+    # Only include style_type if provided
+    if style_type:
+        request_data["style_type"] = style_type
 
     try:
         ob_search_url = f"{settings.OB_SIMILARITY_SERVICE_URL}/ob/search"
@@ -238,7 +264,7 @@ async def compare_ob_filtered(
         
         return JSONResponse(content={
             "message": "Filtered OB comparison completed",
-            "tenant_id": tenant_id,
+            "tenant_ids": tenant_ids_parsed,
             "style_type": style_type,
             "total_compared": len(filtered_results),
             "similar_obs": filtered_results,

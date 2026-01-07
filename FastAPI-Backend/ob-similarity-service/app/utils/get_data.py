@@ -1,6 +1,7 @@
 from decimal import Decimal
 import json
 import logging
+from typing import List, Optional
 from fastapi import HTTPException
 from app import database
 
@@ -58,40 +59,72 @@ async def get_operations(tenant_id: int, style_type: str):
     return layout_ids
 
 
-async def get_op_data(tenant_id: int, style_type: str):
-    style_type = style_type.strip()
-
-    query_styletype_id = """
-    SELECT 
-        layout.layout_id,
-        layout.layout_code,
-        styletype.style_type,
-        layout_operation.operation_name,
-        layout_operation.operation_seq,
-        machine.machine_name
-    FROM 
-        layout
-    JOIN 
-        styletype ON layout.styletype_id = styletype.styletype_id
-    JOIN 
-        layout_operation ON layout.layout_id = layout_operation.layout_id
-    JOIN 
-        machine ON layout_operation.machine_id = machine.machine_id
-    WHERE 
-        layout.tenant_id = :tenant_id
-        AND styletype.style_type = :style_type
-    ORDER BY 
-        layout.layout_id, 
-        layout_operation.operation_seq;
+async def get_op_data(tenant_ids: List[int], style_type: Optional[str] = None):
     """
+    Fetch operation data for multiple tenants, optionally filtered by style_type.
+    
+    Args:
+        tenant_ids: List of tenant IDs to search across
+        style_type: Optional style type filter (if None, returns all style types)
+    """
+    
+    # Build dynamic query based on whether style_type is provided
+    if style_type:
+        style_type = style_type.strip()
+        query = """
+        SELECT 
+            layout.layout_id,
+            layout.layout_code,
+            styletype.style_type,
+            layout_operation.operation_name,
+            layout_operation.operation_seq,
+            machine.machine_name
+        FROM 
+            layout
+        JOIN 
+            styletype ON layout.styletype_id = styletype.styletype_id
+        JOIN 
+            layout_operation ON layout.layout_id = layout_operation.layout_id
+        JOIN 
+            machine ON layout_operation.machine_id = machine.machine_id
+        WHERE 
+            layout.tenant_id IN :tenant_ids
+            AND styletype.style_type = :style_type
+        ORDER BY 
+            layout.layout_id, 
+            layout_operation.operation_seq;
+        """
+        query_params = {"tenant_ids": tuple(tenant_ids), "style_type": style_type}
+    else:
+        query = """
+        SELECT 
+            layout.layout_id,
+            layout.layout_code,
+            styletype.style_type,
+            layout_operation.operation_name,
+            layout_operation.operation_seq,
+            machine.machine_name
+        FROM 
+            layout
+        JOIN 
+            styletype ON layout.styletype_id = styletype.styletype_id
+        JOIN 
+            layout_operation ON layout.layout_id = layout_operation.layout_id
+        JOIN 
+            machine ON layout_operation.machine_id = machine.machine_id
+        WHERE 
+            layout.tenant_id IN :tenant_ids
+        ORDER BY 
+            layout.layout_id, 
+            layout_operation.operation_seq;
+        """
+        query_params = {"tenant_ids": tuple(tenant_ids)}
 
-    results = await fetch_from_db(
-        query_styletype_id, {"tenant_id": tenant_id, "style_type": style_type}
-    )
+    results = await fetch_from_db(query, query_params)
     if not results:
         raise HTTPException(
             status_code=404,
-            detail="No operations found for the given tenant and style type",
+            detail="No operations found for the given tenant(s)" + (f" and style type '{style_type}'" if style_type else ""),
         )
     data = [dict(row) for row in results]
     reorganized_data = {}

@@ -10,7 +10,7 @@ from app.utils.get_data import (
     add_allocation_data_v2,
 )
 from app.utils.text_compare import get_ob_similarity_score, get_ob_similarity_score_v2
-from app.utils.filter_data import filter_by_style_type
+from app.utils.filter_data import filter_by_style_type, filter_by_tenant_and_style
 import json
 import logging
 
@@ -28,8 +28,8 @@ class OperationDataItem(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    tenant_id: int = Field(..., example=3)
-    style_type: str = Field(..., example="LADIES BRIEF - TEZENIS BEACHWEAR")
+    tenant_ids: List[int] = Field(..., example=[3, 5])
+    style_type: Optional[str] = Field(None, example="LADIES BRIEF - TEZENIS BEACHWEAR")
     allocation_data: bool = Field(False, example=True)
     no_of_results: int = Field(10, gt=0, example=5)
     no_of_allocations: int = Field(3, gt=0, example=5)
@@ -37,8 +37,8 @@ class SearchRequest(BaseModel):
 
 
 class SearchRequestDataSource(BaseModel):
-    tenant_id: int = Field(..., example=3)
-    style_type: str = Field(..., example="LADIES BRIEF - TEZENIS BEACHWEAR")
+    tenant_ids: List[int] = Field(..., example=[3, 5])
+    style_type: Optional[str] = Field(None, example="LADIES BRIEF - TEZENIS BEACHWEAR")
     allocation_data: bool = Field(False, example=True)
     no_of_results: int = Field(10, gt=0, example=5)
     no_of_allocations: int = Field(5, gt=0, example=5)
@@ -51,7 +51,7 @@ class SearchRequestDataSource(BaseModel):
 async def search(request: SearchRequest):
     try:
         # Get the request data
-        tenant_id = request.tenant_id
+        tenant_ids = request.tenant_ids
         style_type = request.style_type
         allocation_data = request.allocation_data
         no_of_results = request.no_of_results
@@ -63,12 +63,12 @@ async def search(request: SearchRequest):
             time_start = time.time()
 
             # Retrieve the data from the database
-            data_records = await get_op_data(tenant_id, style_type)
+            data_records = await get_op_data(tenant_ids, style_type)
 
             if not data_records:
                 raise HTTPException(
                     status_code=404,
-                    detail="No data records found for the given tenant and style type",
+                    detail="No data records found for the given tenant(s)",
                 )
 
             results = get_ob_similarity_score_v2(operation_data, data_records)
@@ -98,12 +98,12 @@ async def search(request: SearchRequest):
             time_start = time.time()
 
             # Retrieve the data from the database
-            data_records = await get_op_data(tenant_id, style_type)
+            data_records = await get_op_data(tenant_ids, style_type)
 
             if not data_records:
                 raise HTTPException(
                     status_code=404,
-                    detail="No data records found for the given tenant and style type",
+                    detail="No data records found for the given tenant(s)",
                 )
 
             results = get_ob_similarity_score(operation_data, data_records)
@@ -146,7 +146,7 @@ async def search(request: SearchRequest):
 async def search_data_source_2(request: SearchRequestDataSource):
 
     try:
-        tenant_id = request.tenant_id
+        tenant_ids = request.tenant_ids
         style_type = request.style_type
         allocation_data = request.allocation_data
         no_of_results = request.no_of_results
@@ -158,7 +158,7 @@ async def search_data_source_2(request: SearchRequestDataSource):
         if allocation_data:
             start_time = time.time()
 
-            filtered_data = filter_by_style_type(style_type, ob_datasource)
+            filtered_data = filter_by_tenant_and_style(tenant_ids, style_type, ob_datasource)
 
             results = get_ob_similarity_score_v2(operation_data, filtered_data)
 
@@ -190,7 +190,7 @@ async def search_data_source_2(request: SearchRequestDataSource):
             print(allocation_data)
             start_time = time.time()
 
-            filtered_data = filter_by_style_type(style_type, ob_datasource)
+            filtered_data = filter_by_tenant_and_style(tenant_ids, style_type, ob_datasource)
 
             results = get_ob_similarity_score(operation_data, filtered_data)
 
