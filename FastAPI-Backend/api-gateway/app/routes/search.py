@@ -113,8 +113,7 @@ async def compare_ob(
     operation_data: str = Form(..., description="JSON array of user's OB operations"),
     style_type: Optional[str] = Form(None, description="Style type to search within (optional)"),
     no_of_results: int = Form(10, description="Number of similar OBs to return"),
-    allocation_data: bool = Form(False, description="Include allocation data in results"),
-    no_of_allocations: int = Form(5, description="Number of allocations to include per result"),
+    allocation_data: bool = Form(False, description="Include line_code and run_efficiency in results"),
 ):
     """
     Compare a user-created OB with existing OBs to find similarity scores.
@@ -128,11 +127,10 @@ async def compare_ob(
         operation_data: JSON array of operations: [{"operation_name": "...", "machine_name": "...", "sequence_number": 1}]
         style_type: Optional style type to filter (e.g., "LADIES BRIEF - TEZENIS BEACHWEAR"). If not provided, searches all style types.
         no_of_results: Number of similar OBs to return (default: 10)
-        allocation_data: Whether to include allocation data (default: False)
-        no_of_allocations: Number of allocations per result (default: 5)
+        allocation_data: Whether to include line_code and run_efficiency (default: False)
         
     Returns:
-        Ranked list of similar OBs with similarity scores
+        Ranked list of similar OBs with similarity scores, line_code and run_efficiency if allocation_data is True
     """
     try:
         ops_parsed = json.loads(operation_data)
@@ -155,7 +153,6 @@ async def compare_ob(
         "tenant_ids": tenant_ids_parsed,
         "allocation_data": allocation_data,
         "no_of_results": no_of_results,
-        "no_of_allocations": no_of_allocations,
         "operation_data": ops_parsed,
     }
     
@@ -199,6 +196,7 @@ async def compare_ob_filtered(
     operation_data: str = Form(..., description="JSON array of user's OB operations"),
     layout_codes: str = Form(..., description="JSON array of layout_codes to compare against"),
     style_type: Optional[str] = Form(None, description="Style type to filter (optional)"),
+    allocation_data: bool = Form(False, description="Include line_code and run_efficiency in results"),
 ):
     """
     Compare user's OB with specific OBs (filtered by layout_codes).
@@ -211,6 +209,7 @@ async def compare_ob_filtered(
         operation_data: JSON array of user's operations
         layout_codes: JSON array of layout_codes to filter results (e.g., from similar images)
         style_type: Optional style type to filter (if not provided, searches all style types)
+        allocation_data: Whether to include line_code and run_efficiency (default: False)
         
     Returns:
         Filtered and ranked OB comparison results
@@ -235,9 +234,8 @@ async def compare_ob_filtered(
 
     request_data = {
         "tenant_ids": tenant_ids_parsed,
-        "allocation_data": False,
+        "allocation_data": allocation_data,
         "no_of_results": 100,  # Get more results to filter
-        "no_of_allocations": 3,
         "operation_data": ops_parsed,
     }
     

@@ -232,55 +232,60 @@ async def add_allocation_data(top_results: dict, no_of_allocations: int):
         )
 
 
-async def add_allocation_data_v2(top_results: dict, no_of_allocations: int):
+async def add_allocation_data_v2(top_results: dict):
+    """
+    Add allocation_data with line_code and run_efficiency for each result.
+    Returns all allocations for each layout, sorted by run_efficiency descending.
+    """
     try:
         layout_ids = [int(result["layout_id"]) for result in top_results]
         logger.info(f"Layout IDs: {layout_ids}")
 
         query = """
         SELECT 
-            layout_id,
-            allocation_id,
-            allocation_name,
-            line_id,
-            hourly_target,
-            run_efficiency
+            a.layout_id,
+            a.allocation_id,
+            a.allocation_name,
+            a.line_id,
+            a.hourly_target,
+            a.run_efficiency,
+            l.line_code
         FROM
-            allocation
+            allocation a
+        LEFT JOIN
+            line l ON a.line_id = l.line_id
         WHERE
-            layout_id IN :layout_ids
+            a.layout_id IN :layout_ids
         ORDER BY
-            run_efficiency DESC
-        LIMIT :no_of_allocations;
+            a.layout_id,
+            a.run_efficiency DESC;
         """
 
         query_params = {
             "layout_ids": tuple(layout_ids),
-            "no_of_allocations": no_of_allocations + 1,
         }
         allocation_data = await fetch_from_db(query, query_params)
 
-        if not allocation_data:
-            raise HTTPException(
-                status_code=404,
-                detail="Error retrieving allocation data from the database",
-            )
-
-        allocation_data_dict = [dict(row) for row in allocation_data]
+        # Group allocations by layout_id
+        allocations_by_layout = {}
+        if allocation_data:
+            for row in allocation_data:
+                row_dict = dict(row)
+                layout_id = row_dict["layout_id"]
+                if layout_id not in allocations_by_layout:
+                    allocations_by_layout[layout_id] = []
+                allocations_by_layout[layout_id].append({
+                    "line_code": row_dict.get("line_code"),
+                    "run_efficiency": float(row_dict["run_efficiency"]) if row_dict.get("run_efficiency") is not None else None
+                })
 
         for result in top_results:
             layout_id_result = result["layout_id"]
-            allocation_data = []
-            for allocation in allocation_data_dict:
-                layout_id_allocation = allocation["layout_id"]
-                if layout_id_result == layout_id_allocation:
-                    allocation_data.append(allocation)
-
-            for allocation in allocation_data:
-                if allocation["run_efficiency"] is not None:
-                    allocation["run_efficiency"] = float(allocation["run_efficiency"])
-
-            result["allocation_data"] = allocation_data
+            
+            if layout_id_result in allocations_by_layout:
+                result["allocation_data"] = allocations_by_layout[layout_id_result]
+            else:
+                result["allocation_data"] = []
 
         return top_results
 
@@ -292,22 +297,38 @@ async def add_allocation_data_v2(top_results: dict, no_of_allocations: int):
 
 
 def add_allocation_data_ds(
-    top_results: dict, allocation_datasource: list, no_of_allocations: int
+    top_results: dict, allocation_datasource: list
 ):
+    """
+    Add allocation_data with line_code and run_efficiency from datasource to each result.
+    Returns all allocations for each layout, sorted by run_efficiency descending.
+    """
     try:
+        # Group allocations by layout_id and sort by run_efficiency
+        allocations_by_layout = {}
+        for allocation in allocation_datasource:
+            layout_id = allocation.get("layout_id")
+            if layout_id not in allocations_by_layout:
+                allocations_by_layout[layout_id] = []
+            allocations_by_layout[layout_id].append({
+                "line_code": allocation.get("line_code"),
+                "run_efficiency": float(allocation["run_efficiency"]) if allocation.get("run_efficiency") is not None else None
+            })
+        
+        # Sort each layout's allocations by run_efficiency descending
+        for layout_id in allocations_by_layout:
+            allocations_by_layout[layout_id].sort(
+                key=lambda x: x["run_efficiency"] if x["run_efficiency"] is not None else float('-inf'),
+                reverse=True
+            )
+
         for result in top_results:
             layout_id_result = result["layout_id"]
-            allocation_data = []
-            for allocation in allocation_datasource:
-                layout_id_allocation = allocation["layout_id"]
-                if layout_id_result == layout_id_allocation:
-                    allocation_data.append(allocation)
-
-            for allocation in allocation_data:
-                if allocation["run_efficiency"] is not None:
-                    allocation["run_efficiency"] = float(allocation["run_efficiency"])
-
-            result["allocation_data"] = allocation_data[:no_of_allocations]
+            
+            if layout_id_result in allocations_by_layout:
+                result["allocation_data"] = allocations_by_layout[layout_id_result]
+            else:
+                result["allocation_data"] = []
 
         return top_results
 

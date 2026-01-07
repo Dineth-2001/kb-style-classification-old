@@ -32,7 +32,6 @@ class SearchRequest(BaseModel):
     style_type: Optional[str] = Field(None, example="LADIES BRIEF - TEZENIS BEACHWEAR")
     allocation_data: bool = Field(False, example=True)
     no_of_results: int = Field(10, gt=0, example=5)
-    no_of_allocations: int = Field(3, gt=0, example=5)
     operation_data: List[OperationDataItem]
 
 
@@ -41,7 +40,6 @@ class SearchRequestDataSource(BaseModel):
     style_type: Optional[str] = Field(None, example="LADIES BRIEF - TEZENIS BEACHWEAR")
     allocation_data: bool = Field(False, example=True)
     no_of_results: int = Field(10, gt=0, example=5)
-    no_of_allocations: int = Field(5, gt=0, example=5)
     operation_data: List[OperationDataItem]
     ob_datasource: List[dict]
     allocation_datasource: List[dict] = None
@@ -55,7 +53,6 @@ async def search(request: SearchRequest):
         style_type = request.style_type
         allocation_data = request.allocation_data
         no_of_results = request.no_of_results
-        no_of_allocations = request.no_of_allocations
         operation_data = request.operation_data
 
         if not allocation_data:
@@ -115,10 +112,8 @@ async def search(request: SearchRequest):
                 else results[: len(results)]
             )
 
-            # Add the allocation data to the results
-            top_results_allocation = await add_allocation_data_v2(
-                top_results, no_of_allocations
-            )
+            # Add the allocation data (line_code, run_efficiency) to the results
+            top_results_allocation = await add_allocation_data_v2(top_results)
 
             end_time = time.time()
 
@@ -150,7 +145,6 @@ async def search_data_source_2(request: SearchRequestDataSource):
         style_type = request.style_type
         allocation_data = request.allocation_data
         no_of_results = request.no_of_results
-        no_of_allocations = request.no_of_allocations
         operation_data = request.operation_data
         ob_datasource = request.ob_datasource
         allocation_datasource = request.allocation_datasource
@@ -169,7 +163,7 @@ async def search_data_source_2(request: SearchRequestDataSource):
             )
 
             top_results_allocation = add_allocation_data_ds(
-                top_results, allocation_datasource, no_of_allocations
+                top_results, allocation_datasource
             )
 
             end_time = time.time()
