@@ -232,3 +232,109 @@ def get_ob_similarity_score_v2(operation_data, database_records):
     result.sort(key=lambda x: x["total_similarity_score"], reverse=True)
 
     return result
+
+# ----------------------------------------------------------------------------------------
+# New Version with Sequence Similarity
+# ---------------------------------------------------------------------------------------- 
+
+def sequence_edit_distance(seq1, seq2):
+    """
+    Edit distance for sequences (list of tokens)
+    """
+    n, m = len(seq1), len(seq2)
+    dp = [[0] * (m + 1) for _ in range(n + 1)]
+
+    for i in range(n + 1):
+        dp[i][0] = i
+    for j in range(m + 1):
+        dp[0][j] = j
+
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            cost = 0 if seq1[i - 1] == seq2[j - 1] else 1
+            dp[i][j] = min(
+                dp[i - 1][j] + 1,      # deletion
+                dp[i][j - 1] + 1,      # insertion
+                dp[i - 1][j - 1] + cost  # substitution
+            )
+
+    return dp[n][m]
+
+def normalized_sequence_similarity(seq1, seq2):
+    if not seq1 and not seq2:
+        return 1.0
+
+    dist = sequence_edit_distance(seq1, seq2)
+    return 1 - (dist / max(len(seq1), len(seq2)))
+
+def extract_operation_sequence(operation_machine_list):
+    """
+    Extract only operation names in order
+    """
+    return [preprocess_text(op[0]) for op in operation_machine_list]
+
+def compare_ob_v3(operation_machine_list, database_records):
+    # Operation-name similarity (existing logic)
+    operation_name_similarity_scores = []
+
+    for operation_data in operation_machine_list:
+        operation_name = operation_data[0]
+        scores = []
+
+        for record in database_records:
+            operation_name_ref = record[0]
+            scores.append(get_similarity_score(operation_name, operation_name_ref))
+
+        operation_name_similarity_scores.append(max(scores))
+
+    avg_operation_name_similarity = np.mean(operation_name_similarity_scores)
+
+    # Sequence similarity (NEW)
+    seq1 = extract_operation_sequence(operation_machine_list)
+    seq2 = extract_operation_sequence(database_records)
+
+    sequence_similarity = normalized_sequence_similarity(seq1, seq2) * 100
+
+    # Final weighted OB similarity
+    ALPHA = 0.6  # operation-name similarity
+    BETA = 0.4   # sequence similarity
+
+    total_similarity = (
+        ALPHA * avg_operation_name_similarity
+        + BETA * sequence_similarity
+    )
+
+    return {
+        "operation_similarity_score": avg_operation_name_similarity,
+        "sequence_similarity_score": sequence_similarity,
+        "total_similarity_score": total_similarity,
+    }
+
+def get_ob_similarity_score_v3(operation_data, database_records):
+    operation_machine_list = get_operation_machine_list(operation_data)
+    result = []
+
+    for record in database_records:
+        db_op_list = get_operation_machine_list_db(record["operation_data"])
+
+        similarity_scores = compare_ob_v3(
+            operation_machine_list, db_op_list
+        )
+
+        result.append(
+            {
+                "layout_id": record["layout_id"],
+                "layout_code": record["layout_code"],
+                "operation_similarity_score": similarity_scores["operation_similarity_score"],
+                "sequence_similarity_score": similarity_scores["sequence_similarity_score"],
+                "total_similarity_score": similarity_scores["total_similarity_score"],
+            }
+        )
+
+    result.sort(key=lambda x: x["total_similarity_score"], reverse=True)
+    return result
+
+
+# Suggested enhancements
+#    - Weighted edit distance (important ops cost more)
+#    - LCS similarity as an alternative metric
