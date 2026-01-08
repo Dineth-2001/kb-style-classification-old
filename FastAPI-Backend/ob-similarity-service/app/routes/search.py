@@ -9,7 +9,7 @@ from app.utils.get_data import (
     add_allocation_data,
     add_allocation_data_v2,
 )
-from app.utils.text_compare import get_ob_similarity_score, get_ob_similarity_score_v2
+from app.utils.text_compare import get_ob_similarity_score, get_ob_similarity_score_v2, get_ob_similarity_score_v3
 from app.utils.filter_data import filter_by_style_type, filter_by_tenant_and_style
 import json
 import logging
@@ -68,7 +68,8 @@ async def search(request: SearchRequest):
                     detail="No data records found for the given tenant(s)",
                 )
 
-            results = get_ob_similarity_score_v2(operation_data, data_records)
+            # results = get_ob_similarity_score_v2(operation_data, data_records)
+            results = get_ob_similarity_score_v3(operation_data, data_records)
 
             # Filter the top results based on the no_of_results
             top_results = (
@@ -103,7 +104,8 @@ async def search(request: SearchRequest):
                     detail="No data records found for the given tenant(s)",
                 )
 
-            results = get_ob_similarity_score(operation_data, data_records)
+            # results = get_ob_similarity_score(operation_data, data_records)
+            results = get_ob_similarity_score_v3(operation_data, data_records)
 
             # Filter the top results based on the no_of_results
             top_results = (
@@ -154,7 +156,8 @@ async def search_data_source_2(request: SearchRequestDataSource):
 
             filtered_data = filter_by_tenant_and_style(tenant_ids, style_type, ob_datasource)
 
-            results = get_ob_similarity_score_v2(operation_data, filtered_data)
+            # results = get_ob_similarity_score_v2(operation_data, filtered_data)
+            results = get_ob_similarity_score_v3(operation_data, filtered_data)
 
             top_results = (
                 results[:no_of_results]
@@ -186,7 +189,8 @@ async def search_data_source_2(request: SearchRequestDataSource):
 
             filtered_data = filter_by_tenant_and_style(tenant_ids, style_type, ob_datasource)
 
-            results = get_ob_similarity_score(operation_data, filtered_data)
+            # results = get_ob_similarity_score(operation_data, filtered_data)
+            results = get_ob_similarity_score_v3(operation_data, filtered_data)
 
             top_results = (
                 results[:no_of_results]
